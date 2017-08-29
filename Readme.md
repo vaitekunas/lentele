@@ -5,6 +5,8 @@
 `lentele` is thread-safe, i.e. a table can be accessed by several goroutines
 simultaneously.
 
+Documentation is available on [godoc](https://godoc.org/github.com/vaitekunas/lentele).
+
 # Usage
 
 ```go
@@ -42,9 +44,23 @@ table.AddRow("chain").
       Insert("xcol","ycol","zcol").
       Modify(high, "Col X","Col Z").
       Modify(low, "Col Y")
-
 ```
+
+## Table templates
+
+Currently the library provides following table templates:
+
+```go
+for _, tmpl := range []func() Template{tmplClassic, tmplSmooth, tmplModern} {
+  template := tmpl()
+  template.PrintExample(os.Stdout)
+}
+```
+
+A good source of characters that can be used in creating database designs can be
+found [here](https://en.wikipedia.org/wiki/Box-drawing_character).
 
 # TODO
 
-[] Add `Template.PrintExample` to show an example table
+- [ ] Increase test coverage
+- [ ] Add `Template.PrintExample` to show an example table

@@ -12,9 +12,12 @@ import (
 func New(columns ...string) Table {
 
 	newTable := &table{
-		Mutex:    &sync.Mutex{},
-		Rows:     []*row{},
-		RowNames: []string{},
+		Mutex:       &sync.Mutex{},
+		Rows:        []*row{},
+		RowNames:    []string{},
+		Formats:     []string{},
+		Footnotes:   []string{},
+		headAndFoot: map[string]*row{},
 	}
 
 	if len(columns) > 0 {
@@ -45,12 +48,10 @@ func NewFromRichJSON(source io.Reader) (Table, error) {
 // LoadTemplate returns the named template
 func LoadTemplate(name string) Template {
 	switch strings.ToLower(name) {
-	case "plain":
-		return tmplClassic()
 	case "smooth":
-		return tmplClassic()
+		return tmplSmooth()
 	case "modern":
-		return tmplClassic()
+		return tmplModern()
 	default:
 		return tmplClassic()
 	}
@@ -61,6 +62,9 @@ type table struct {
 	*sync.Mutex `json:",omit"`
 	Rows        []*row   `json:"rows"`
 	RowNames    []string `json:"rownames"`
+	Formats     []string `json:"formats"`
+	Title       string   `json:"title"`
+	Footnotes   []string `json:"footnotes"`
 
 	headAndFoot map[string]*row // Map of addresses to header and footer pointers
 }
@@ -80,10 +84,40 @@ type cell struct {
 	ModFunc     func(v interface{}) interface{} `json:",omit"`
 }
 
+// AddTitle adds a title to the table
+// NB: locks t
+func (t *table) AddTitle(title string) {
+	t.Lock()
+	defer t.Unlock()
+
+	if len(title) == 0 {
+		return
+	}
+
+	t.Title = title
+}
+
+// AddFootnote adds a footnoite to the table
+// NB: locks t
+func (t *table) AddFootnote(footnote string) {
+	t.Lock()
+	defer t.Unlock()
+
+	if len(footnote) == 0 {
+		return
+	}
+
+	t.Footnotes = append(t.Footnotes, footnote)
+}
+
 // AddHeader adds a header to the table
 // NB: indirectly locks t
 func (t *table) AddHeader(colnames []string) Row {
-	return t.AddRow("header").Insert(colnames)
+	iface := make([]interface{}, len(colnames))
+	for i, v := range colnames {
+		iface[i] = v
+	}
+	return t.AddRow("header").Insert(iface...)
 }
 
 // AddFooter adds a footer to the table
@@ -122,6 +156,13 @@ func (t *table) AddRow(name string) Row {
 	}
 
 	t.Rows = append(t.Rows, newRow)
+
+	// Remember header and footer
+	if name == "header" {
+		t.headAndFoot["header"] = newRow
+	} else if name == "footer" {
+		t.headAndFoot["footer"] = newRow
+	}
 
 	return newRow
 }
@@ -175,6 +216,116 @@ func (t *table) RemoveRowByName(name string) error {
 func (t *table) Render(dst io.Writer, measureModified, modified bool, template Template, columns ...string) {
 	t.Lock()
 	defer t.Unlock()
+
+	// Header and footer info
+	headRow, footRow := -1, -1
+	header, _ := t.headAndFoot["header"]
+	footer, _ := t.headAndFoot["footer"]
+
+	// Final rows
+	measureRows := [][]string{}
+	printRows := [][]string{}
+
+	// Get Widths
+	rowCount := 0
+	widths := []int{}
+	for i, row := range t.Rows {
+
+		if t.Rows[i] == header {
+			headRow = i
+		} else if t.Rows[i] == footer {
+			footRow = i
+		} else {
+			rowCount++
+		}
+
+		measureRow := []string{}
+		printRow := []string{}
+
+		for j, jcell := range row.Cells {
+			jcell.Lock()
+			if len(widths) < j+1 {
+				widths = append(widths, 0)
+				t.Formats = append(t.Formats, "%v")
+			}
+			format := t.Formats[j]
+			if jcell.ModFunc == nil {
+				jcell.ModFunc = func(v interface{}) interface{} { return v }
+			}
+
+			valueNorm := fmt.Sprintf(format, jcell.Value)
+			valueMod := fmt.Sprintf(format, jcell.ModFunc(jcell.Value))
+			jcell.ModVal = valueMod
+
+			if measureModified {
+				measureRow = append(measureRow, valueMod)
+			} else {
+				measureRow = append(measureRow, valueNorm)
+			}
+			if modified {
+				printRow = append(printRow, valueMod)
+			} else {
+				printRow = append(printRow, valueNorm)
+			}
+
+			if measureModified {
+				if length := utf8.RuneCountInString(valueMod); length > widths[j] {
+					widths[j] = length
+				}
+			} else {
+				if length := utf8.RuneCountInString(valueNorm); length > widths[j] {
+					widths[j] = length
+				}
+			}
+
+			jcell.Unlock()
+		}
+
+		measureRows = append(measureRows, measureRow)
+		printRows = append(printRows, printRow)
+	}
+
+	// Set template widths
+	template.SetColumnWidths(widths)
+
+	// Prepare table slice
+	lines := []string{""}
+
+	// Title
+	if t.Title != "" {
+		lines = append(lines, template.RenderTitle(t.Title)...)
+	}
+
+	// Render header
+	if headRow != -1 {
+		lines = append(lines, template.RenderHeader(measureRows[headRow], printRows[headRow])...)
+	}
+
+	// Render rows
+	rnr := 1
+	for i := range measureRows {
+		if i == headRow || i == footRow {
+			continue
+		}
+		lines = append(lines, template.RenderRow(rnr, rowCount, measureRows[i], printRows[i])...)
+		rnr++
+	}
+
+	// Render footer
+	if footRow != -1 {
+		lines = append(lines, template.RenderFooter(measureRows[footRow], printRows[footRow])...)
+	} else {
+		lines = append(lines, template.RenderFooter([]string{}, []string{})...)
+	}
+
+	// Render Footnotes
+	if len(t.Footnotes) > 0 {
+		lines = append(lines, template.RenderFootnotes(t.Footnotes)...)
+	}
+
+	// Write to destination
+	dst.Write([]byte(strings.Join(lines, "\n")))
+
 }
 
 // Marshals the table to json including all meta information (row names,
@@ -286,8 +437,13 @@ func (r *row) getColnameIndex(colname string) int {
 	}
 
 	// Find colname index
-	header.Lock()
+	if r != header {
+		header.Lock()
+		defer header.Unlock()
+	}
+
 	for i, hcell := range header.Cells {
+
 		vs, ok := hcell.Value.(string)
 		if !ok {
 			continue
@@ -296,148 +452,6 @@ func (r *row) getColnameIndex(colname string) int {
 			return i
 		}
 	}
-	header.Unlock()
 
 	return index
-}
-
-// template implements the Template interface
-//
-// +====+====+====+====+ <- H1: [2]string{"+","="}
-// |    |    |    |    | <- H2: [1]string{"|"}
-// +====+====+====+====+ <- H3: [2]string{"+","="}
-// +----+----+----+----+ <- C1: [2]string{"+","-"}
-// |    |    |    |    | <- C2: [1]string{"|"}
-// +----+----+----+----+ <- C3: [2]string{"+","-"}
-// +====+====+====+====+ <- F1: [2]string{"+","="}
-// |    |    |    |    | <- F2: [1]string{"|"}
-// +====+====+====+====+ <- F3: [2]string{"+","="}
-//
-type template struct {
-	*sync.Mutex
-	ColWidths []int
-	H1        [2]string
-	H2        [1]string
-	H3        [2]string
-	C1        [2]string
-	C2        [1]string
-	C3        [2]string
-	F1        [2]string
-	F2        [1]string
-	F3        [2]string
-}
-
-// SetColumnWidths sets the column widths
-func (t *template) SetColumnWidths(widths []int) {
-	t.Lock()
-	defer t.Unlock()
-
-	t.ColWidths = widths
-}
-
-// RenderHeader renders the header row
-func (t *template) RenderHeader(cells []string) []string {
-	t.Lock()
-	defer t.Unlock()
-
-	L1 := t.H1[0]
-	L2 := t.H2[0]
-	L3 := t.H3[0]
-	for i, width := range t.ColWidths {
-
-		vlen := utf8.RuneCountInString(cells[i])
-		reps := int((width + 2 - vlen) / 2)
-		sp1 := strings.Repeat(" ", reps)
-		sp2 := strings.Repeat(" ", width+2-vlen-reps)
-
-		L1 += strings.Repeat(t.H1[1], width+2) + t.H1[0]
-		L2 += fmt.Sprintf("%s%s%s", sp1, cells[i], sp2) + t.H2[0]
-		L3 += strings.Repeat(t.H3[1], width+2) + t.H3[0]
-	}
-
-	return []string{L1, L2, L3}
-
-}
-
-// RenderRow renders a regular row
-func (t *template) RenderRow(row int, cells []string) []string {
-	t.Lock()
-	defer t.Unlock()
-
-	L1 := t.C1[0]
-	L2 := t.C2[0]
-	L3 := t.C3[0]
-	for i, width := range t.ColWidths {
-
-		vlen := utf8.RuneCountInString(cells[i])
-		reps := int((width + 2 - vlen) / 2)
-		sp1 := strings.Repeat(" ", reps)
-		sp2 := strings.Repeat(" ", width+2-vlen-reps)
-
-		L1 += strings.Repeat(t.C1[1], width+2) + t.C1[0]
-		L2 += fmt.Sprintf("%s%s%s", sp1, cells[i], sp2) + t.C2[0]
-		L3 += strings.Repeat(t.C3[1], width+2) + t.C3[0]
-	}
-
-	return []string{L1, L2, L3}
-}
-
-// RenderFooter renders the footer row
-func (t *template) RenderFooter(cells []string) []string {
-	t.Lock()
-	defer t.Unlock()
-
-	L1 := ""
-	L2 := ""
-	L3 := ""
-	prev := false
-	for i, width := range t.ColWidths {
-
-		vlen := utf8.RuneCountInString(cells[i])
-		reps := int((width + 2 - vlen) / 2)
-		sp1 := strings.Repeat(" ", reps)
-		sp2 := strings.Repeat(" ", width+2-vlen-reps)
-
-		if vlen > 0 {
-			if !prev {
-				L1 += t.F1[0]
-				L2 += t.F2[0]
-				L3 += t.F3[0]
-			}
-			L1 += strings.Repeat(t.F1[1], width+2) + t.F1[0]
-			L2 += fmt.Sprintf("%s%s%s", sp1, cells[i], sp2) + t.F2[0]
-			L3 += strings.Repeat(t.F3[1], width+2) + t.F3[0]
-			prev = true
-		} else {
-			if !prev {
-				L1 += " "
-				L2 += " "
-				L3 += " "
-			}
-			L1 += strings.Repeat(" ", width+2)
-			L2 += strings.Repeat(" ", width+2)
-			L3 += strings.Repeat(" ", width+2)
-			prev = false
-		}
-	}
-
-	return []string{L1, L2, L3}
-}
-
-// Classic template
-func tmplClassic() *template {
-
-	return &template{
-		Mutex:     &sync.Mutex{},
-		ColWidths: []int{},
-		H1:        [2]string{"+", "="},
-		H2:        [1]string{"|"},
-		H3:        [2]string{"+", ""},
-		C1:        [2]string{"+", "-"},
-		C2:        [1]string{"|"},
-		C3:        [2]string{"+", "-"},
-		F1:        [2]string{"+", "="},
-		F2:        [1]string{"|"},
-		F3:        [2]string{"+", "="},
-	}
 }

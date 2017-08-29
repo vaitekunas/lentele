@@ -9,6 +9,12 @@ import (
 // All methods should be implemented in a thread-safe way.
 type Table interface {
 
+	// AddTitle adds an optional title to the table
+	AddTitle(title string)
+
+	// AddFootnote adds a footnote to the table
+	AddFootnote(footnote string)
+
 	// AddHeader adds a header row (optional, but recommended).
 	//
 	// Setting the header is required in order to reference columns by name in
@@ -111,11 +117,17 @@ type Template interface {
 	SetColumnWidths([]int)
 
 	// RenderHeader renders the header row
-	RenderHeader(cells []string) []string
+	RenderHeader(mcells, pcells []string) []string
 
 	// RenderRow renders a regular row
-	RenderRow(row int, cells []string) []string
+	RenderRow(row, rows int, mcells, pcells []string) []string
 
 	// RenderFooter renders the footer row
-	RenderFooter(cells []string) []string
+	RenderFooter(mcells, pcells []string) []string
+
+	// RenderTitle renders table's title
+	RenderTitle(title string) []string
+
+	// RenderFootnotes renders table's footnotes
+	RenderFootnotes(footnotes []string) []string
 }
