@@ -43,13 +43,16 @@ type Table interface {
 
 	// SetFormat sets a column's format and returns an error if no such column
 	// exists. If no format is specified, then "%v" is going to be used.
-	SetFormat(column, format string) error
+	SetFormat(format string, colnames ...string) error
 
 	// GetRow returns the nth row from the table or error if no such row exists
 	GetRow(nth int) (Row, error)
 
 	// Returns a row
 	GetRowByName(name string) (Row, error)
+
+	// Transform a function to all the values in colnames
+	Transform(trans func(v interface{}) interface{}, colnames ...string)
 
 	// Filter applies a filter to each row and returns a filtered table.
 	// If inplace is set to true, then the filtered-out rows are permanently deleted
@@ -125,8 +128,8 @@ type Template interface {
 	// RenderFooter renders the footer row
 	RenderFooter(mcells, pcells []string) []string
 
-	// RenderTitle renders table's title
-	RenderTitle(title string) []string
+	// RenderTitles renders table's titles
+	RenderTitles(titles []string) []string
 
 	// RenderFootnotes renders table's footnotes
 	RenderFootnotes(footnotes []string) []string

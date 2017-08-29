@@ -63,7 +63,7 @@ type table struct {
 	Rows        []*row   `json:"rows"`
 	RowNames    []string `json:"rownames"`
 	Formats     []string `json:"formats"`
-	Title       string   `json:"title"`
+	Titles      []string `json:"titles"`
 	Footnotes   []string `json:"footnotes"`
 
 	headAndFoot map[string]*row // Map of addresses to header and footer pointers
@@ -94,7 +94,7 @@ func (t *table) AddTitle(title string) {
 		return
 	}
 
-	t.Title = title
+	t.Titles = append(t.Titles, title)
 }
 
 // AddFootnote adds a footnoite to the table
@@ -136,15 +136,11 @@ func (t *table) AddRow(name string) Row {
 	name = strings.ToLower(name)
 
 	// Check for header or footer
-	if name == "header" {
-		header, ok := t.headAndFoot["header"]
+	switch name {
+	case "header", "footer":
+		special, ok := t.headAndFoot[name]
 		if ok {
-			return header
-		}
-	} else if name == "footer" {
-		footer, ok := t.headAndFoot["footer"]
-		if ok {
-			return footer
+			return special
 		}
 	}
 
@@ -155,13 +151,14 @@ func (t *table) AddRow(name string) Row {
 		tref:  t,
 	}
 
+	// Add rows and their names
 	t.Rows = append(t.Rows, newRow)
+	t.RowNames = append(t.RowNames, name)
 
 	// Remember header and footer
-	if name == "header" {
-		t.headAndFoot["header"] = newRow
-	} else if name == "footer" {
-		t.headAndFoot["footer"] = newRow
+	switch name {
+	case "header", "footer":
+		t.headAndFoot[name] = newRow
 	}
 
 	return newRow
@@ -169,8 +166,47 @@ func (t *table) AddRow(name string) Row {
 
 // SetFormat sets a column's format and returns an error if no such column
 // exists. If no format is specified, then "%v" is going to be used.
-func (t *table) SetFormat(column, format string) error {
+func (t *table) SetFormat(format string, colnames ...string) error {
 	return nil
+}
+
+// Transform transforms the values of colnames using function 'trans'
+// NB: locks t
+func (t *table) Transform(trans func(v interface{}) interface{}, colnames ...string) {
+	t.Lock()
+	defer t.Unlock()
+
+	if len(colnames) == 0 {
+		return
+	}
+
+	// Get indexes
+	colIdx := []int{}
+	for _, col := range colnames {
+		idx := t.getColnameIndex(col, false, false)
+		if idx != -1 {
+			colIdx = append(colIdx, idx)
+		}
+	}
+
+	// Get header and footer
+	header := t.headAndFoot["header"]
+	footer := t.headAndFoot["footer"]
+
+	// Transform values
+	for i := range t.Rows {
+		if t.Rows[i] == header || t.Rows[i] == footer {
+			continue
+		}
+		for j := range t.Rows[i].Cells {
+			for _, idx := range colIdx {
+				if idx <= j {
+					t.Rows[i].Cells[j].Value = trans(t.Rows[i].Cells[j].Value)
+				}
+			}
+		}
+	}
+
 }
 
 // GetRow returns the nth row from the table or error if no such row exists
@@ -180,7 +216,28 @@ func (t *table) GetRow(nth int) (Row, error) {
 
 // Returns a row
 func (t *table) GetRowByName(name string) (Row, error) {
-	return nil, nil
+	t.Lock()
+	defer t.Unlock()
+
+	name = strings.ToLower(name)
+
+	switch name {
+	case "header", "footer":
+		special, ok := t.headAndFoot[name]
+		if !ok {
+			return nil, fmt.Errorf("GetRowByName: no such rowname '%s'", name)
+		}
+		return special, nil
+
+	default:
+		for i, rowname := range t.RowNames {
+			if rowname == name {
+				return t.Rows[i], nil
+			}
+		}
+		return nil, fmt.Errorf("GetRowByName: no such rowname '%s'", name)
+	}
+
 }
 
 // Filter applies a filter to each row and returns a filtered table.
@@ -292,8 +349,8 @@ func (t *table) Render(dst io.Writer, measureModified, modified bool, template T
 	lines := []string{""}
 
 	// Title
-	if t.Title != "" {
-		lines = append(lines, template.RenderTitle(t.Title)...)
+	if len(t.Titles) > 0 {
+		lines = append(lines, template.RenderTitles(t.Titles)...)
 	}
 
 	// Render header
@@ -343,6 +400,43 @@ func (t *table) MarshalToVanillaJSON(dst io.Writer) (int, error) {
 	return 0, nil
 }
 
+// getColnameIndex returns the position of a header's columns "colname"
+// NB: locks t
+func (t *table) getColnameIndex(colname string, lockTable, lockHead bool) int {
+	if lockTable {
+		t.Lock()
+		defer t.Unlock()
+	}
+
+	// Default: no such column
+	index := -1
+
+	// Check the header
+	header, ok := t.headAndFoot["header"]
+	if !ok {
+		return index
+	}
+
+	// Find colname index
+	if lockHead {
+		header.Lock()
+		defer header.Unlock()
+	}
+
+	for i, hcell := range header.Cells {
+
+		vs, ok := hcell.Value.(string)
+		if !ok {
+			continue
+		}
+		if strings.ToLower(vs) == strings.ToLower(colname) {
+			return i
+		}
+	}
+
+	return index
+}
+
 // Insert inserts some values into the row
 func (r *row) Insert(vals ...interface{}) Row {
 	r.Lock()
@@ -372,8 +466,21 @@ func (r *row) Change(colname string, value interface{}) Row {
 	r.Lock()
 	defer r.Unlock()
 
+	colname = strings.ToLower(colname)
+
+	// Header and footer rows
+	header := r.tref.headAndFoot["header"]
+	footer := r.tref.headAndFoot["footer"]
+
 	// Find relevant column
-	index := r.getColnameIndex(colname)
+	var index int
+	switch r {
+	case header, footer:
+		index = r.tref.getColnameIndex(colname, true, false)
+	default:
+		index = r.tref.getColnameIndex(colname, true, true)
+	}
+
 	if index == -1 {
 		return r
 	}
@@ -397,12 +504,28 @@ func (r *row) Modify(modifier func(interface{}) interface{}, colnames ...string)
 		return r
 	}
 
+	// Header and footer rows
+	header := r.tref.headAndFoot["header"]
+	footer := r.tref.headAndFoot["footer"]
+
+	// Modify all relevant cells
 	for _, colname := range colnames {
 
-		index := r.getColnameIndex(colname)
+		colname = strings.ToLower(colname)
+
+		var index int
+
+		switch r {
+		case header, footer:
+			index = r.tref.getColnameIndex(colname, true, false)
+		default:
+			index = r.tref.getColnameIndex(colname, true, true)
+		}
+
 		if index == -1 {
 			continue
 		}
+
 		rcell := r.Cells[index]
 		rcell.Lock()
 		rcell.ModFunc = modifier
@@ -410,48 +533,4 @@ func (r *row) Modify(modifier func(interface{}) interface{}, colnames ...string)
 	}
 
 	return r
-}
-
-// getHeadOrFoot returns a header or a footer if they exist
-// NB: locks parent table
-func (r *row) getHeadOrFoot(name string) (*row, bool) {
-	r.tref.Lock()
-	defer r.tref.Unlock()
-
-	header, ok := r.tref.headAndFoot[strings.ToLower(name)]
-	return header, ok
-}
-
-// Returns the position of a header's columns "colname"
-// NB: locks header
-// NB: indirectly locks parent table
-func (r *row) getColnameIndex(colname string) int {
-
-	// Default: no such column
-	index := -1
-
-	// Check the header
-	header, ok := r.getHeadOrFoot("header")
-	if !ok {
-		return index
-	}
-
-	// Find colname index
-	if r != header {
-		header.Lock()
-		defer header.Unlock()
-	}
-
-	for i, hcell := range header.Cells {
-
-		vs, ok := hcell.Value.(string)
-		if !ok {
-			continue
-		}
-		if strings.ToLower(vs) == strings.ToLower(colname) {
-			return i
-		}
-	}
-
-	return index
 }

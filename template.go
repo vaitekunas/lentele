@@ -2,6 +2,8 @@ package lentele
 
 import (
 	"fmt"
+	"golang.org/x/crypto/ssh/terminal"
+	"os"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -53,9 +55,11 @@ func (t *template) RenderHeader(mcells, pcells []string) []string {
 	L1 := t.H1[0]
 	L2 := t.H2[0]
 	L3 := t.H3[0]
+
+	tlsum := 1
 	for i, width := range t.ColWidths {
 
-		value, sp1, sp2 := measure(i, width, mcells, pcells)
+		value, sp1, sp2, tl := measure(i, width, mcells, pcells)
 
 		L1 += strings.Repeat(t.H1[1], width+2)
 		L2 += fmt.Sprintf("%s%s%s", sp1, value, sp2)
@@ -70,15 +74,16 @@ func (t *template) RenderHeader(mcells, pcells []string) []string {
 			L2 += t.H2[2]
 			L3 += t.H3[3]
 		}
+		tlsum += tl + 1
 	}
 
 	lines := []string{}
 	if !t.SkipH1 {
-		lines = append(lines, L1)
+		lines = append(lines, centerStr(L1))
 	}
-	lines = append(lines, L2)
+	lines = append(lines, fmt.Sprintf("%s%s", strings.Repeat(" ", getOffset(tlsum)), L2))
 	if !t.SkipH3 {
-		lines = append(lines, L3)
+		lines = append(lines, centerStr(L3))
 	}
 
 	return lines
@@ -93,9 +98,11 @@ func (t *template) RenderRow(row, rows int, mcells, pcells []string) []string {
 	L1 := t.C1[0]
 	L2 := t.C2[0]
 	L3 := t.C3[0]
+
+	tlsum := 1
 	for i, width := range t.ColWidths {
 
-		value, sp1, sp2 := measure(i, width, mcells, pcells)
+		value, sp1, sp2, tl := measure(i, width, mcells, pcells)
 
 		L1 += strings.Repeat(t.C1[1], width+2)
 		L2 += fmt.Sprintf("%s%s%s", sp1, value, sp2)
@@ -110,16 +117,18 @@ func (t *template) RenderRow(row, rows int, mcells, pcells []string) []string {
 			L2 += t.C2[2]
 			L3 += t.C3[3]
 		}
+		tlsum += tl + 1
 	}
 
 	lines := []string{}
 	if !t.SkipC1 && (row != 1 || !t.SkipFirstC1) {
-		lines = append(lines, L1)
+		lines = append(lines, centerStr(L1))
 	}
-	lines = append(lines, L2)
+
+	lines = append(lines, fmt.Sprintf("%s%s", strings.Repeat(" ", getOffset(tlsum)), L2))
 
 	if !t.SkipC3 && (row != rows || !t.SkipLastC3) {
-		lines = append(lines, L3)
+		lines = append(lines, centerStr(L3))
 	}
 
 	return lines
@@ -135,9 +144,10 @@ func (t *template) RenderFooter(mcells, pcells []string) []string {
 	L1 := t.F1[0]
 	L2 := t.F2[0]
 	L3 := t.F3[0]
+	tlsum := 1
 	for i, width := range t.ColWidths {
 
-		value, sp1, sp2 := measure(i, width, mcells, pcells)
+		value, sp1, sp2, tl := measure(i, width, mcells, pcells)
 
 		L1 += strings.Repeat(t.F1[1], width+2)
 		L2 += fmt.Sprintf("%s%s%s", sp1, value, sp2)
@@ -155,26 +165,23 @@ func (t *template) RenderFooter(mcells, pcells []string) []string {
 		if len(value) > 0 {
 			any = true
 		}
+
+		tlsum += tl + 1
 	}
 
 	lines := []string{}
 	if !t.SkipF1 {
-		lines = append(lines, L1)
+		lines = append(lines, centerStr(L1))
 	}
 	if any {
-		lines = append(lines, L2)
+		lines = append(lines, fmt.Sprintf("%s%s",strings.Repeat(" ",getOffset(tlsum)),L2))
 	}
 
 	if !t.SkipF3 && any {
-		lines = append(lines, L3)
+		lines = append(lines, centerStr(L3))
 	}
 
 	return lines
-}
-
-// RRenderTitle renders the title
-func (t *template) RenderTitle(title string) []string {
-	return []string{"", title, ""}
 }
 
 // RenderFootnotes renders footnotes
@@ -197,8 +204,22 @@ func (t *template) RenderFootnotes(footnotes []string) []string {
 	return lines
 }
 
+// RenderTitles renders the title
+func (t *template) RenderTitles(titles []string) []string {
+
+	lines := []string{""}
+
+	for _, title := range titles {
+		lines = append(lines, centerStr(title))
+	}
+
+	lines = append(lines, "")
+
+	return lines
+}
+
 // mesure mesaures string widths and returns printable strings
-func measure(i, width int, mcells, pcells []string) (string, string, string) {
+func measure(i, width int, mcells, pcells []string) (string, string, string, int) {
 
 	pvalue := ""
 	mvalue := ""
@@ -212,7 +233,30 @@ func measure(i, width int, mcells, pcells []string) (string, string, string) {
 	sp1 := strings.Repeat(" ", reps)
 	sp2 := strings.Repeat(" ", width+2-vlen-reps)
 
-	return pvalue, sp1, sp2
+	totalLen := width + 2
+
+	return pvalue, sp1, sp2, totalLen
+}
+
+// getOffset returns the available tty space
+func getOffset(width int) int {
+	w, _, err := terminal.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		return 0
+	}
+	offset := int((w - width) / 2)
+	if offset < 0 {
+		return 0
+	}
+	return offset
+}
+
+// centerStr centers a string
+func centerStr(value string) string {
+	width := utf8.RuneCountInString(value)
+	offset := getOffset(width)
+
+	return fmt.Sprintf("%s%s", strings.Repeat(" ", offset), value)
 }
 
 // Classic template
@@ -232,7 +276,7 @@ func tmplClassic() *template {
 		C3:         [4]string{"╟", "─", "┼", "╢"},
 		F1:         [4]string{"╚", "═", "╧", "╝"},
 		F2:         [3]string{" ", " ", " "},
-		F3:         [4]string{"", "", "", ""},
+		F3:         [4]string{" ", " ", " ", " "},
 		HR:         "─",
 	}
 }

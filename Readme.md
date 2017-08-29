@@ -2,6 +2,9 @@
 
 `lentele` is a no-thrills ascii-table builder
 
+![2017-08-29-193241_1715x839_scrot](https://user-images.githubusercontent.com/3492398/29835261-b99440f0-8cf1-11e7-9756-fbdd2c9d6554.png)
+
+
 `lentele` is thread-safe, i.e. a table can be accessed by several goroutines
 simultaneously.
 
