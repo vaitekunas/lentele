@@ -294,11 +294,11 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 	footer, _ := t.headAndFoot["footer"]
 
 	// Get relevant columns
-	colIdx := map[int]bool{}
+	colIdx := []int{}
 	for _, col := range columns {
 		idx := t.getColnameIndex(col, false, false)
 		if idx != -1 {
-			colIdx[idx] = true
+			colIdx = append(colIdx, idx)
 		}
 	}
 
@@ -319,11 +319,29 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 			rowCount++
 		}
 
+		// Relevant columns
+		rangeVar := []int{}
+		if len(colIdx) != 0 {
+			rangeVar = colIdx
+		} else {
+			for k := range row.Cells {
+				rangeVar = append(rangeVar, k)
+			}
+		}
+
 		measureRow := []string{}
 		printRow := []string{}
 
 		// Walk through all the columns of a row
-		for j, jcell := range row.Cells {
+		for j, jcol := range rangeVar {
+
+			// Ignore overflowing cells
+			if jcol >= len(row.Cells) {
+				continue
+			}
+
+			// Select cell
+			jcell := row.Cells[jcol]
 
 			// Determine formats and modifiers
 			jcell.Lock()
@@ -390,13 +408,6 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 			} else {
 				if length := utf8.RuneCountInString(valueNorm); length > widths[j] {
 					widths[j] = length
-				}
-			}
-
-			// Skip irrelevant columns
-			if len(colIdx) > 0 {
-				if _, ok := colIdx[j]; !ok {
-					widths[j] = 0
 				}
 			}
 
