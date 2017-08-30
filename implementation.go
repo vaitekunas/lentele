@@ -3,6 +3,7 @@ package lentele
 import (
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -198,11 +199,24 @@ func (t *table) Transform(trans func(v interface{}) interface{}, colnames ...str
 		if t.Rows[i] == header || t.Rows[i] == footer {
 			continue
 		}
-		for j := range t.Rows[i].Cells {
-			for _, idx := range colIdx {
-				if idx <= j {
+
+		for _, j := range colIdx {
+			if j <= len(t.Rows[i].Cells)-1 {
+
+				switch reflect.TypeOf(t.Rows[i].Cells[j].Value).Kind() {
+
+				case reflect.Slice:
+					slice := reflect.ValueOf(t.Rows[i].Cells[j].Value)
+					result := make([]interface{}, slice.Len(), slice.Len())
+					for k := 0; k < slice.Len(); k++ {
+						result[k] = trans(slice.Index(k).Interface())
+					}
+					t.Rows[i].Cells[j].Value = result
+
+				default:
 					t.Rows[i].Cells[j].Value = trans(t.Rows[i].Cells[j].Value)
 				}
+
 			}
 		}
 	}
@@ -310,17 +324,38 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 				jcell.ModFunc = func(v interface{}) interface{} { return v }
 			}
 
-			valueNorm := fmt.Sprintf(format, jcell.Value)
+			var valueNorm string
 			var valueMod string
-			if valueNormStr, ok := jcell.Value.(string); ok {
+
+			switch reflect.TypeOf(jcell.Value).Kind() {
+
+			case reflect.String:
+				valueNormSlice := []string{}
 				valueModSlice := []string{}
-				for _, part := range strings.Split(valueNormStr, "\n") {
+				value, _ := jcell.Value.(string)
+				for _, part := range strings.Split(value, "\n") {
+					valueNormSlice = append(valueNormSlice, fmt.Sprintf(format, part))
 					valueModSlice = append(valueModSlice, fmt.Sprintf(format, jcell.ModFunc(part)))
 				}
+				valueNorm = strings.Join(valueNormSlice, "\n")
 				valueMod = strings.Join(valueModSlice, "\n")
-			} else {
+
+			case reflect.Slice:
+				slice := reflect.ValueOf(jcell.Value)
+				valueNormSlice := []string{}
+				valueModSlice := []string{}
+				for i := 0; i < slice.Len(); i++ {
+					valueNormSlice = append(valueNormSlice, fmt.Sprintf(format, slice.Index(i).Interface()))
+					valueModSlice = append(valueModSlice, fmt.Sprintf(format, jcell.ModFunc(slice.Index(i).Interface())))
+				}
+				valueNorm = strings.Join(valueNormSlice, "\n")
+				valueMod = strings.Join(valueModSlice, "\n")
+
+			default:
+				valueNorm = fmt.Sprintf(format, jcell.Value)
 				valueMod = fmt.Sprintf(format, jcell.ModFunc(jcell.Value))
 			}
+
 			jcell.ModVal = valueMod
 
 			if measureModified {
