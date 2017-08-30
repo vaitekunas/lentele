@@ -23,6 +23,9 @@ import (
 //
 type template struct {
 	*sync.Mutex
+
+	Center bool
+
 	ColWidths []int
 	SkipH1, SkipH3, SkipC1,
 	SkipC3, SkipF1, SkipF3 bool
@@ -47,43 +50,72 @@ func (t *template) SetColumnWidths(widths []int) {
 	t.ColWidths = widths
 }
 
+// SetDisplayOptions sets some display options
+func (t *template) SetDisplayOptions(center bool){
+	t.Lock()
+	defer t.Unlock()
+
+	t.Center = center
+}
+
+// renderL1L2L3 renders a template line
+func renderL1L2L3(T1[4]string, T2[3]string, T3[4]string, widths []int, mcells, pcells []string, center bool) (L1 string, L2 string, L3 string, isEmpty bool) {
+
+	L1 = T1[0]
+	L2 = T2[0]
+	L3 = T3[0]
+
+	tlsum := 1
+	for i, width := range widths {
+
+		value, sp1, sp2, tl := measure(i, width, mcells, pcells)
+
+		L1 += strings.Repeat(T1[1], width+2)
+		L2 += fmt.Sprintf("%s%s%s", sp1, value, sp2)
+		L3 += strings.Repeat(T3[1], width+2)
+
+		if i != len(widths)-1 {
+			L1 += T1[2]
+			L2 += T2[1]
+			L3 += T3[2]
+		} else {
+			L1 += T1[3]
+			L2 += T2[2]
+			L3 += T3[3]
+		}
+		tlsum += tl + 1
+
+		if len(value) > 0 {
+			isEmpty = false
+		}
+	}
+
+	if center {
+		L1 = centerStr(L1)
+		L2 = fmt.Sprintf("%s%s", strings.Repeat(" ", getOffset(tlsum)), L2)
+		L3 = centerStr(L3)
+	}
+
+	return L1, L2, L3, isEmpty
+
+}
+
 // RenderHeader renders the header row
 func (t *template) RenderHeader(mcells, pcells []string) []string {
 	t.Lock()
 	defer t.Unlock()
 
-	L1 := t.H1[0]
-	L2 := t.H2[0]
-	L3 := t.H3[0]
+	// Render lines
+	L1, L2, L3, _ := renderL1L2L3(t.H1, t.H2, t.H3, t.ColWidths, mcells, pcells, t.Center)
 
-	tlsum := 1
-	for i, width := range t.ColWidths {
-
-		value, sp1, sp2, tl := measure(i, width, mcells, pcells)
-
-		L1 += strings.Repeat(t.H1[1], width+2)
-		L2 += fmt.Sprintf("%s%s%s", sp1, value, sp2)
-		L3 += strings.Repeat(t.H3[1], width+2)
-
-		if i != len(t.ColWidths)-1 {
-			L1 += t.H1[2]
-			L2 += t.H2[1]
-			L3 += t.H3[2]
-		} else {
-			L1 += t.H1[3]
-			L2 += t.H2[2]
-			L3 += t.H3[3]
-		}
-		tlsum += tl + 1
-	}
-
+	// Append or skip
 	lines := []string{}
 	if !t.SkipH1 {
-		lines = append(lines, centerStr(L1))
+		lines = append(lines, L1)
 	}
-	lines = append(lines, fmt.Sprintf("%s%s", strings.Repeat(" ", getOffset(tlsum)), L2))
+	lines = append(lines, L2)
 	if !t.SkipH3 {
-		lines = append(lines, centerStr(L3))
+		lines = append(lines, L3)
 	}
 
 	return lines
@@ -95,40 +127,18 @@ func (t *template) RenderRow(row, rows int, mcells, pcells []string) []string {
 	t.Lock()
 	defer t.Unlock()
 
-	L1 := t.C1[0]
-	L2 := t.C2[0]
-	L3 := t.C3[0]
-
-	tlsum := 1
-	for i, width := range t.ColWidths {
-
-		value, sp1, sp2, tl := measure(i, width, mcells, pcells)
-
-		L1 += strings.Repeat(t.C1[1], width+2)
-		L2 += fmt.Sprintf("%s%s%s", sp1, value, sp2)
-		L3 += strings.Repeat(t.C3[1], width+2)
-
-		if i != len(t.ColWidths)-1 {
-			L1 += t.C1[2]
-			L2 += t.C2[1]
-			L3 += t.C3[2]
-		} else {
-			L1 += t.C1[3]
-			L2 += t.C2[2]
-			L3 += t.C3[3]
-		}
-		tlsum += tl + 1
-	}
+	// Render lines
+	L1, L2, L3, _ := renderL1L2L3(t.C1, t.C2, t.C3, t.ColWidths, mcells, pcells, t.Center)
 
 	lines := []string{}
 	if !t.SkipC1 && (row != 1 || !t.SkipFirstC1) {
-		lines = append(lines, centerStr(L1))
+		lines = append(lines, L1)
 	}
 
-	lines = append(lines, fmt.Sprintf("%s%s", strings.Repeat(" ", getOffset(tlsum)), L2))
+	lines = append(lines, L2)
 
 	if !t.SkipC3 && (row != rows || !t.SkipLastC3) {
-		lines = append(lines, centerStr(L3))
+		lines = append(lines, L3)
 	}
 
 	return lines
@@ -140,45 +150,19 @@ func (t *template) RenderFooter(mcells, pcells []string) []string {
 	t.Lock()
 	defer t.Unlock()
 
-	any := false
-	L1 := t.F1[0]
-	L2 := t.F2[0]
-	L3 := t.F3[0]
-	tlsum := 1
-	for i, width := range t.ColWidths {
-
-		value, sp1, sp2, tl := measure(i, width, mcells, pcells)
-
-		L1 += strings.Repeat(t.F1[1], width+2)
-		L2 += fmt.Sprintf("%s%s%s", sp1, value, sp2)
-		L3 += strings.Repeat(t.F3[1], width+2)
-
-		if i != len(t.ColWidths)-1 {
-			L1 += t.F1[2]
-			L2 += t.F2[1]
-			L3 += t.F3[2]
-		} else {
-			L1 += t.F1[3]
-			L2 += t.F2[2]
-			L3 += t.F3[3]
-		}
-		if len(value) > 0 {
-			any = true
-		}
-
-		tlsum += tl + 1
-	}
+	// Render lines
+	L1, L2, L3, isEmpty := renderL1L2L3(t.F1, t.F2, t.F3, t.ColWidths, mcells, pcells, t.Center)
 
 	lines := []string{}
 	if !t.SkipF1 {
-		lines = append(lines, centerStr(L1))
+		lines = append(lines, L1)
 	}
-	if any {
-		lines = append(lines, fmt.Sprintf("%s%s",strings.Repeat(" ",getOffset(tlsum)),L2))
+	if !isEmpty {
+		lines = append(lines, L2)
 	}
 
-	if !t.SkipF3 && any {
-		lines = append(lines, centerStr(L3))
+	if !t.SkipF3 && !isEmpty {
+		lines = append(lines, L3)
 	}
 
 	return lines
@@ -206,11 +190,17 @@ func (t *template) RenderFootnotes(footnotes []string) []string {
 
 // RenderTitles renders the title
 func (t *template) RenderTitles(titles []string) []string {
+	t.Lock()
+	defer t.Unlock()
 
 	lines := []string{""}
 
 	for _, title := range titles {
-		lines = append(lines, centerStr(title))
+		if t.Center {
+			lines = append(lines, centerStr(title))
+		}else{
+			lines = append(lines, title)
+		}
 	}
 
 	lines = append(lines, "")

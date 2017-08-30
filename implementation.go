@@ -270,7 +270,7 @@ func (t *table) RemoveRowByName(name string) error {
 
 // Render writes a rendered table into an io.Writer
 // NB: locks t
-func (t *table) Render(dst io.Writer, measureModified, modified bool, template Template, columns ...string) {
+func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, template Template, columns ...string) {
 	t.Lock()
 	defer t.Unlock()
 
@@ -344,6 +344,7 @@ func (t *table) Render(dst io.Writer, measureModified, modified bool, template T
 
 	// Set template widths
 	template.SetColumnWidths(widths)
+	template.SetDisplayOptions(centered)
 
 	// Prepare table slice
 	lines := []string{""}

@@ -77,7 +77,7 @@ type Table interface {
 	// Setting modified to false will ignore all the applied modifications (Row.Modify).
 	// Setting measureModified to true, will use the modified string representation
 	// to calculate cell widths.
-	Render(dst io.Writer, measureModified, modified bool, template Template, columns ...string)
+	Render(dst io.Writer, measureModified, modified, centered bool, template Template, columns ...string)
 
 	// Marshals the table to json including all meta information (row names,
 	// modified values, etc.)
@@ -118,6 +118,9 @@ type Template interface {
 
 	// SetColumnWidths sets the column widths
 	SetColumnWidths([]int)
+
+	// SetDisplayOptions sets some display options
+	SetDisplayOptions(center bool)
 
 	// RenderHeader renders the header row
 	RenderHeader(mcells, pcells []string) []string

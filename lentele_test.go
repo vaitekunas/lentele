@@ -31,7 +31,7 @@ func TestNew(t *testing.T) {
 	table.AddRow("").Insert(3, fmt.Sprintf("%-12s", "E corp"), 300).Modify(evil, "Client")
 	table.AddFooter().Insert("", fmt.Sprintf("%12s", "Total"), "600")
 
-	table.Render(os.Stdout, false, true, LoadTemplate("classic"))
+	table.Render(os.Stdout, false, true, true, LoadTemplate("classic"))
 	//table.Render(os.Stdout, false, true, LoadTemplate("smooth"))
 	//table.Render(os.Stdout, false, true, LoadTemplate("modern"))
 }
