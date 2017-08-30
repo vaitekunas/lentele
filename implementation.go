@@ -293,11 +293,20 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 	header, _ := t.headAndFoot["header"]
 	footer, _ := t.headAndFoot["footer"]
 
+	// Get relevant columns
+	colIdx := map[int]bool{}
+	for _, col := range columns {
+		idx := t.getColnameIndex(col, false, false)
+		if idx != -1 {
+			colIdx[idx] = true
+		}
+	}
+
 	// Final rows
 	measureRows := [][]string{}
 	printRows := [][]string{}
 
-	// Get Widths
+	// Walk through rows
 	rowCount := 0
 	widths := []int{}
 	for i, row := range t.Rows {
@@ -313,17 +322,22 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 		measureRow := []string{}
 		printRow := []string{}
 
+		// Walk through all the columns of a row
 		for j, jcell := range row.Cells {
+
+			// Determine formats and modifiers
 			jcell.Lock()
 			if len(widths) < j+1 {
 				widths = append(widths, 0)
 				t.Formats = append(t.Formats, "%v")
 			}
+
 			format := t.Formats[j]
 			if jcell.ModFunc == nil {
 				jcell.ModFunc = func(v interface{}) interface{} { return v }
 			}
 
+			// Prepare formated and modified values
 			var valueNorm string
 			var valueMod string
 
@@ -376,6 +390,13 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 			} else {
 				if length := utf8.RuneCountInString(valueNorm); length > widths[j] {
 					widths[j] = length
+				}
+			}
+
+			// Skip irrelevant columns
+			if len(colIdx) > 0 {
+				if _, ok := colIdx[j]; !ok {
+					widths[j] = 0
 				}
 			}
 

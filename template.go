@@ -181,6 +181,11 @@ func renderL1L2L3(T1 [4]string, T2 [3]string, T3 [4]string, widths []int, mcells
 		tlsum = 1
 		for i, width := range widths {
 
+			// Skip irrelevant columns
+			if width == 0 {
+				continue
+			}
+
 			// Cell values and spacing
 			value, sp1, sp2, tl := measure(i, width, mcells, pcells)
 
