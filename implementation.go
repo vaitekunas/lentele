@@ -311,7 +311,16 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 			}
 
 			valueNorm := fmt.Sprintf(format, jcell.Value)
-			valueMod := fmt.Sprintf(format, jcell.ModFunc(jcell.Value))
+			var valueMod string
+			if valueNormStr, ok := jcell.Value.(string); ok {
+				valueModSlice := []string{}
+				for _, part := range strings.Split(valueNormStr, "\n") {
+					valueModSlice = append(valueModSlice, fmt.Sprintf(format, jcell.ModFunc(part)))
+				}
+				valueMod = strings.Join(valueModSlice, "\n")
+			} else {
+				valueMod = fmt.Sprintf(format, jcell.ModFunc(jcell.Value))
+			}
 			jcell.ModVal = valueMod
 
 			if measureModified {
