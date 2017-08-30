@@ -58,7 +58,7 @@ type Table interface {
 	// If inplace is set to true, then the filtered-out rows are permanently deleted
 	// (references to the rows are removed).
 	// Otherwise a new table, *referencing* the relevant rows, is created
-	Filter(filter func(columns ...string) bool, inplace bool, columns ...string) Table
+	Filter(filter func(values ...interface{}) bool, inplace, keepFooter bool, columns ...string) Table
 
 	// FilterByRowNames is same as filter, only uses row names instead of column
 	// values.

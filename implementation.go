@@ -182,13 +182,7 @@ func (t *table) Transform(trans func(v interface{}) interface{}, colnames ...str
 	}
 
 	// Get indexes
-	colIdx := []int{}
-	for _, col := range colnames {
-		idx := t.getColnameIndex(col, false, false)
-		if idx != -1 {
-			colIdx = append(colIdx, idx)
-		}
-	}
+	colIdx := t.getColIdx(false, colnames...)
 
 	// Get header and footer
 	header := t.headAndFoot["header"]
@@ -258,9 +252,81 @@ func (t *table) GetRowByName(name string) (Row, error) {
 // If inplace is set to true, then the filtered-out rows are permanently deleted
 // (references to the rows are removed).
 // Otherwise a new table, *referencing* the relevant rows, is created
-func (t *table) Filter(filter func(columns ...string) bool, inplace bool, columns ...string) Table {
+func (t *table) Filter(filter func(values ...interface{}) bool, inplace, keepFooter bool, columns ...string) Table {
 
-	return nil
+	// Validate columns
+	if len(columns) == 0 {
+		return t
+	}
+
+	colIdx := t.getColIdx(false, columns...)
+	if len(colIdx) == 0 {
+		return &table{}
+	}
+
+	t.Lock()
+	defer t.Unlock()
+
+	// Header and footer
+	header := t.headAndFoot["header"]
+	footer := t.headAndFoot["foooter"]
+
+	// Fields for the new table
+	var fTable *table
+	headAndFoot := map[string]*row{}
+	rowNames := []string{}
+	rows := []*row{}
+
+	// Find relevant rows
+	for i, row := range t.Rows {
+
+		// Always keep the header
+		if row == header {
+			rows = append(rows, t.Rows[i])
+			rowNames = append(rowNames, t.RowNames[i])
+			headAndFoot["header"] = header
+		}
+
+		// Optionally keep the footer
+		if row == footer && keepFooter {
+			rows = append(rows, t.Rows[i])
+			rowNames = append(rowNames, t.RowNames[i])
+			headAndFoot["footer"] = footer
+		}
+
+		// Run the filter
+		values := make([]interface{}, len(colIdx), len(colIdx))
+		for j, col := range colIdx {
+			if len(row.Cells)-1 < col {
+				continue
+			}
+			values[j] = row.Cells[col].Value
+		}
+		if filter(values...) {
+			rows = append(rows, t.Rows[i])
+			rowNames = append(rowNames, t.RowNames[i])
+		}
+	}
+
+	// Create a new table or replace table rows
+	if inplace {
+		t.Rows = rows
+		t.RowNames = rowNames
+		t.headAndFoot = headAndFoot
+		fTable = t
+	} else {
+		fTable = &table{
+			Mutex:       &sync.Mutex{},
+			Rows:        rows,
+			RowNames:    rowNames,
+			Formats:     t.Formats,
+			Footnotes:   t.Footnotes,
+			headAndFoot: headAndFoot,
+		}
+	}
+
+	return fTable
+
 }
 
 // FilterByRowNames is same as filter, only uses row names instead of column
@@ -282,6 +348,24 @@ func (t *table) RemoveRowByName(name string) error {
 	return nil
 }
 
+// getColIdx returns indexes of selected columns
+func (t *table) getColIdx(lock bool, columns ...string) []int {
+	if lock {
+		t.Lock()
+		defer t.Unlock()
+	}
+
+	colIdx := []int{}
+	for _, col := range columns {
+		idx := t.getColnameIndex(col, false, false)
+		if idx != -1 {
+			colIdx = append(colIdx, idx)
+		}
+	}
+
+	return colIdx
+}
+
 // Render writes a rendered table into an io.Writer
 // NB: locks t
 func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, template Template, columns ...string) {
@@ -294,13 +378,7 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 	footer, _ := t.headAndFoot["footer"]
 
 	// Get relevant columns
-	colIdx := []int{}
-	for _, col := range columns {
-		idx := t.getColnameIndex(col, false, false)
-		if idx != -1 {
-			colIdx = append(colIdx, idx)
-		}
-	}
+	colIdx := t.getColIdx(false, columns...)
 
 	// Final rows
 	measureRows := [][]string{}
@@ -401,6 +479,7 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 				printRow = append(printRow, valueNorm)
 			}
 
+			// Remember column widths
 			if measureModified {
 				if length := utf8.RuneCountInString(valueMod); length > widths[j] {
 					widths[j] = length
