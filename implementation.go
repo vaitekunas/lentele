@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -352,63 +353,57 @@ func (t *table) FilterByRowNames(filter func(rowname string) bool, inplace, keep
 	return fTable
 }
 
-// Removes the nth row from the table
-func (t *table) RemoveRow(nth int) error {
-	return nil
-}
+// RemoveRows removes a set of rows from the table
+// NB: locks t
+func (t *table) RemoveRows(rowIDs ...int) error {
+	t.Lock()
+	defer t.Unlock()
 
-// Removes the named row from the table
-func (t *table) RemoveRowByName(name string) error {
-	return nil
-}
-
-// tableFromRows builds a table from rows
-func (t *table) tableFromRows(lock, inplace bool, rows []*row, rowNames []string, hf map[string]*row) *table {
-
-	if lock {
-		t.Lock()
-		defer t.Unlock()
+	if len(rowIDs) == 0 {
+		return fmt.Errorf("RemoveRows: no row IDs provided")
 	}
 
-	var fTable *table
+	// Header and footer
+	header := t.headAndFoot["header"]
+	footer := t.headAndFoot["footer"]
 
-	// Create a new table or replace table rows
-	if inplace {
-		t.Rows = rows
-		t.RowNames = rowNames
-		t.headAndFoot = hf
-		fTable = t
-	} else {
-		fTable = &table{
-			Mutex:       &sync.Mutex{},
-			Rows:        rows,
-			RowNames:    rowNames,
-			Formats:     t.Formats,
-			Titles:      t.Titles,
-			Footnotes:   t.Footnotes,
-			headAndFoot: hf,
+	selected := []int{}
+
+	// Validate rowIDs
+	for _, nth := range rowIDs {
+		if nth < 0 || nth > len(t.Rows) {
+			return fmt.Errorf("RemoveRow: no such row")
+		}
+
+		srow := t.Rows[nth]
+		if srow == header || srow == footer {
+			return fmt.Errorf("RemoveRow: cannot remove header/footer")
+		}
+		selected = append(selected, nth)
+	}
+
+	// Sort entries
+	sort.Ints(selected)
+
+	// remove rows
+	for i := len(selected) - 1; i >= 0; i-- {
+		nth := selected[i]
+		if nth != len(t.Rows)-1 {
+			t.Rows = append(t.Rows[:nth], t.Rows[nth+1:]...)
+			t.RowNames = append(t.RowNames[:nth], t.RowNames[nth+1:]...)
+		} else {
+			t.Rows = t.Rows[:nth]
+			t.RowNames = t.RowNames[:nth]
 		}
 	}
 
-	return fTable
+	return nil
 }
 
-// getColIdx returns indexes of selected columns
-func (t *table) getColIdx(lock bool, columns ...string) []int {
-	if lock {
-		t.Lock()
-		defer t.Unlock()
-	}
-
-	colIdx := []int{}
-	for _, col := range columns {
-		idx := t.getColnameIndex(col, false, false)
-		if idx != -1 {
-			colIdx = append(colIdx, idx)
-		}
-	}
-
-	return colIdx
+// RemoveRowsByName removes a set of named row from the table
+// NB: locks t
+func (t *table) RemoveRowsByName(names ...string) error {
+	return nil
 }
 
 // Render writes a rendered table into an io.Writer
@@ -599,6 +594,55 @@ func (t *table) MarshalToRichJSON(dst io.Writer) (int, error) {
 // NB: locks t
 func (t *table) MarshalToVanillaJSON(dst io.Writer) (int, error) {
 	return 0, nil
+}
+
+// tableFromRows builds a table from rows
+func (t *table) tableFromRows(lock, inplace bool, rows []*row, rowNames []string, hf map[string]*row) *table {
+
+	if lock {
+		t.Lock()
+		defer t.Unlock()
+	}
+
+	var fTable *table
+
+	// Create a new table or replace table rows
+	if inplace {
+		t.Rows = rows
+		t.RowNames = rowNames
+		t.headAndFoot = hf
+		fTable = t
+	} else {
+		fTable = &table{
+			Mutex:       &sync.Mutex{},
+			Rows:        rows,
+			RowNames:    rowNames,
+			Formats:     t.Formats,
+			Titles:      t.Titles,
+			Footnotes:   t.Footnotes,
+			headAndFoot: hf,
+		}
+	}
+
+	return fTable
+}
+
+// getColIdx returns indexes of selected columns
+func (t *table) getColIdx(lock bool, columns ...string) []int {
+	if lock {
+		t.Lock()
+		defer t.Unlock()
+	}
+
+	colIdx := []int{}
+	for _, col := range columns {
+		idx := t.getColnameIndex(col, false, false)
+		if idx != -1 {
+			colIdx = append(colIdx, idx)
+		}
+	}
+
+	return colIdx
 }
 
 // getColnameIndex returns the position of a header's columns "colname"

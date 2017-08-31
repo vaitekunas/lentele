@@ -66,11 +66,11 @@ type Table interface {
 	// Rows without a unique name are treated as having a blank name, i.e. ""
 	FilterByRowNames(filter func(rowname string) bool, inplace, keepFooter bool) Table
 
-	// Removes the nth row from the table
-	RemoveRow(nth int) error
+	// RemoveRows removes a set of rows from the table
+	RemoveRows(rowIds ...int) error
 
-	// Removes the named row from the table
-	RemoveRowByName(name string) error
+	// RemoveRowsByName removes a set of named rows from the table
+	RemoveRowsByName(names ...string) error
 
 	// Render renders the table into an io.Writer
 	//
