@@ -122,6 +122,9 @@ type Template interface {
 	// SetColumnWidths sets the column widths
 	SetColumnWidths([]int)
 
+	// SetColumnContentWidths sets column content widths
+	SetColumnContentWidths(width int, columns []int)
+
 	// SetDisplayOptions sets some display options
 	SetDisplayOptions(center bool)
 

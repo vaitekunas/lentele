@@ -27,6 +27,8 @@ type template struct {
 	Center bool
 
 	ColWidths []int
+	ColWidthOverride map[int]int
+
 	SkipH1, SkipH3, SkipC1,
 	SkipC3, SkipF1, SkipF3 bool
 	SkipFirstC1, SkipLastC3 bool
@@ -50,6 +52,17 @@ func (t *template) SetColumnWidths(widths []int) {
 	t.ColWidths = widths
 }
 
+// SetColumnContentWidths sets column content widths
+func (t *template) SetColumnContentWidths(width int, columns []int) {
+	t.Lock()
+	defer t.Unlock()
+
+	for _, col := range columns {
+		t.ColWidthOverride[col] = width
+	}
+
+}
+
 // SetDisplayOptions sets some display options
 func (t *template) SetDisplayOptions(center bool) {
 	t.Lock()
@@ -64,7 +77,7 @@ func (t *template) RenderHeader(mcells, pcells []string) []string {
 	defer t.Unlock()
 
 	// Render lines
-	L1, L2, L3, _ := renderL1L2L3(t.H1, t.H2, t.H3, t.ColWidths, mcells, pcells, t.Center)
+	L1, L2, L3, _ := renderL1L2L3(t.H1, t.H2, t.H3, t.ColWidths, t.ColWidthOverride, mcells, pcells, t.Center)
 
 	// Append or skip
 	lines := []string{}
@@ -86,7 +99,7 @@ func (t *template) RenderRow(row, rows int, mcells, pcells []string) []string {
 	defer t.Unlock()
 
 	// Render lines
-	L1, L2, L3, _ := renderL1L2L3(t.C1, t.C2, t.C3, t.ColWidths, mcells, pcells, t.Center)
+	L1, L2, L3, _ := renderL1L2L3(t.C1, t.C2, t.C3, t.ColWidths, t.ColWidthOverride, mcells, pcells, t.Center)
 
 	lines := []string{}
 	if !t.SkipC1 && (row != 1 || !t.SkipFirstC1) {
@@ -109,7 +122,7 @@ func (t *template) RenderFooter(mcells, pcells []string) []string {
 	defer t.Unlock()
 
 	// Render lines
-	L1, L2, L3, isEmpty := renderL1L2L3(t.F1, t.F2, t.F3, t.ColWidths, mcells, pcells, t.Center)
+	L1, L2, L3, isEmpty := renderL1L2L3(t.F1, t.F2, t.F3, t.ColWidths, t.ColWidthOverride, mcells, pcells, t.Center)
 
 	lines := []string{}
 	if !t.SkipF1 {
@@ -167,7 +180,7 @@ func (t *template) RenderTitles(titles []string) []string {
 }
 
 // renderL1L2L3 renders a template line
-func renderL1L2L3(T1 [4]string, T2 [3]string, T3 [4]string, widths []int, mcells, pcells []string, center bool) (L1 string, L2 string, L3 string, isEmpty bool) {
+func renderL1L2L3(T1 [4]string, T2 [3]string, T3 [4]string, widths []int, contentWidths map[int]int, mcells, pcells []string, center bool) (L1 string, L2 string, L3 string, isEmpty bool) {
 
 	var tlsum int
 	lines := newLines(pcells)
@@ -187,7 +200,8 @@ func renderL1L2L3(T1 [4]string, T2 [3]string, T3 [4]string, widths []int, mcells
 			}
 
 			// Cell values and spacing
-			value, sp1, sp2, tl := measure(i, width, mcells, pcells)
+			cwidth, _ := contentWidths[i]
+			value, sp1, sp2, tl := measure(i, width, cwidth, mcells, pcells)
 
 			// Cell lines and prelines (empty lines)
 			ilines := strings.Count(value, "\n") + 1
@@ -206,6 +220,7 @@ func renderL1L2L3(T1 [4]string, T2 [3]string, T3 [4]string, widths []int, mcells
 				valueParts := strings.Split(value, "\n")
 				sp1Parts := strings.Split(sp1, "\n")
 				sp2Parts := strings.Split(sp2, "\n")
+
 				iline := line-prelines-1
 				L2 += fmt.Sprintf("%s%s%s", sp1Parts[iline], valueParts[iline], sp2Parts[iline])
 			}
@@ -247,7 +262,7 @@ func renderL1L2L3(T1 [4]string, T2 [3]string, T3 [4]string, widths []int, mcells
 		L1 = centerStr(L1)
 		L3 = centerStr(L3)
 	}
-	
+
 	L2 = strings.Join(L2Slice,"\n")
 
 	return L1, L2, L3, isEmpty
@@ -255,7 +270,7 @@ func renderL1L2L3(T1 [4]string, T2 [3]string, T3 [4]string, widths []int, mcells
 }
 
 // mesure mesaures string widths and returns printable strings
-func measure(i, width int, mcells, pcells []string) (string, string, string, int) {
+func measure(i, width int, contentWidth int, mcells, pcells []string) (string, string, string, int) {
 
 	pvalue := ""
 	mvalue := ""
@@ -271,6 +286,10 @@ func measure(i, width int, mcells, pcells []string) (string, string, string, int
 	mvalueParts := strings.Split(mvalue, "\n")
 	for _, mpart := range mvalueParts {
 		vlen := utf8.RuneCountInString(mpart)
+		if contentWidth != 0 {
+			vlen = contentWidth
+		}
+
 		reps := int((width + 2 - vlen) / 2)
 		sp1Slice = append(sp1Slice, strings.Repeat(" ", reps))
 		sp2Slice = append(sp2Slice, strings.Repeat(" ", width+2-vlen-reps))
@@ -321,6 +340,7 @@ func tmplClassic() *template {
 	return &template{
 		Mutex:      &sync.Mutex{},
 		ColWidths:  []int{},
+		ColWidthOverride: map[int]int{},
 		SkipC1:     true,
 		SkipLastC3: true,
 		SkipF3:     true,
@@ -343,6 +363,7 @@ func tmplSmooth() *template {
 	return &template{
 		Mutex:      &sync.Mutex{},
 		ColWidths:  []int{},
+		ColWidthOverride: map[int]int{},
 		SkipC1:     true,
 		SkipLastC3: true,
 		H1:         [4]string{"┌", "─", "┬", "┐"},
@@ -364,6 +385,7 @@ func tmplModern() *template {
 	return &template{
 		Mutex:      &sync.Mutex{},
 		ColWidths:  []int{},
+		ColWidthOverride: map[int]int{},
 		SkipH1:     true,
 		SkipC1:     true,
 		SkipLastC3: true,

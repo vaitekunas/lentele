@@ -16,12 +16,13 @@ import (
 func New(columns ...string) Table {
 
 	newTable := &table{
-		Mutex:       &sync.Mutex{},
-		Rows:        []*row{},
-		RowNames:    []string{},
-		Formats:     map[int]string{},
-		Footnotes:   []string{},
-		headAndFoot: map[string]*row{},
+		Mutex:          &sync.Mutex{},
+		Rows:           []*row{},
+		RowNames:       []string{},
+		Formats:        map[int]string{},
+		Footnotes:      []string{},
+		WidthOverrides: map[int]int{},
+		headAndFoot:    map[string]*row{},
 	}
 
 	if len(columns) > 0 {
@@ -90,12 +91,13 @@ func NewFromRichJSON(source io.Reader) (Table, error) {
 
 	// Unmarshal to a map
 	tableProtype := &table{
-		Mutex:       &sync.Mutex{},
-		Rows:        []*row{},
-		RowNames:    []string{},
-		Formats:     map[int]string{},
-		Footnotes:   []string{},
-		headAndFoot: map[string]*row{},
+		Mutex:          &sync.Mutex{},
+		Rows:           []*row{},
+		RowNames:       []string{},
+		Formats:        map[int]string{},
+		Footnotes:      []string{},
+		WidthOverrides: map[int]int{},
+		headAndFoot:    map[string]*row{},
 	}
 	if err := json.Unmarshal(jsoned, tableProtype); err != nil {
 		return nil, fmt.Errorf("NewFromVanillaJSON: could not unmarshal data: %s", err.Error())
@@ -145,12 +147,13 @@ func LoadTemplate(name string) Template {
 
 // table implements the lentele.Table interface
 type table struct {
-	*sync.Mutex `json:",omit"`
-	Rows        []*row         `json:"rows"`
-	RowNames    []string       `json:"rownames"`
-	Formats     map[int]string `json:"formats"`
-	Titles      []string       `json:"titles"`
-	Footnotes   []string       `json:"footnotes"`
+	*sync.Mutex    `json:",omit"`
+	Rows           []*row         `json:"rows"`
+	RowNames       []string       `json:"rownames"`
+	Formats        map[int]string `json:"formats"`
+	Titles         []string       `json:"titles"`
+	Footnotes      []string       `json:"footnotes"`
+	WidthOverrides map[int]int    `json:"width"`
 
 	headAndFoot map[string]*row // Map of addresses to header and footer pointers
 }
@@ -276,6 +279,19 @@ func (t *table) SetFormat(format string, colnames ...string) error {
 func (t *table) SetColumnWidth(width int, colnames ...string) error {
 	t.Lock()
 	defer t.Unlock()
+
+	if len(colnames) == 0 {
+		return fmt.Errorf("SetColumnWidth: provide at least one column name")
+	}
+
+	colIdx := t.getColIdx(false, colnames...)
+	if len(colIdx) == 0 {
+		return fmt.Errorf("SetColumnWidth: no such columns")
+	}
+
+	for _, idx := range colIdx {
+		t.WidthOverrides[idx] = width
+	}
 
 	return nil
 }
@@ -657,6 +673,10 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 				if length := utf8.RuneCountInString(valueNorm); length > widths[j] {
 					widths[j] = length
 				}
+			}
+			if widthOverride, ok := t.WidthOverrides[j]; ok {
+				widths[j] = widthOverride + 2
+				template.SetColumnContentWidths(widthOverride, []int{j})
 			}
 
 			jcell.Unlock()
