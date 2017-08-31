@@ -19,7 +19,7 @@ func New(columns ...string) Table {
 		Mutex:       &sync.Mutex{},
 		Rows:        []*row{},
 		RowNames:    []string{},
-		Formats:     []string{},
+		Formats:     map[int]string{},
 		Footnotes:   []string{},
 		headAndFoot: map[string]*row{},
 	}
@@ -93,7 +93,7 @@ func NewFromRichJSON(source io.Reader) (Table, error) {
 		Mutex:       &sync.Mutex{},
 		Rows:        []*row{},
 		RowNames:    []string{},
-		Formats:     []string{},
+		Formats:     map[int]string{},
 		Footnotes:   []string{},
 		headAndFoot: map[string]*row{},
 	}
@@ -146,11 +146,11 @@ func LoadTemplate(name string) Template {
 // table implements the lentele.Table interface
 type table struct {
 	*sync.Mutex `json:",omit"`
-	Rows        []*row   `json:"rows"`
-	RowNames    []string `json:"rownames"`
-	Formats     []string `json:"formats"`
-	Titles      []string `json:"titles"`
-	Footnotes   []string `json:"footnotes"`
+	Rows        []*row         `json:"rows"`
+	RowNames    []string       `json:"rownames"`
+	Formats     map[int]string `json:"formats"`
+	Titles      []string       `json:"titles"`
+	Footnotes   []string       `json:"footnotes"`
 
 	headAndFoot map[string]*row // Map of addresses to header and footer pointers
 }
@@ -253,6 +253,30 @@ func (t *table) AddRow(name string) Row {
 // SetFormat sets a column's format and returns an error if no such column
 // exists. If no format is specified, then "%v" is going to be used.
 func (t *table) SetFormat(format string, colnames ...string) error {
+	t.Lock()
+	defer t.Unlock()
+
+	if len(colnames) == 0 {
+		return fmt.Errorf("SetFormat: provide at least one column name")
+	}
+
+	colIdx := t.getColIdx(false, colnames...)
+	if len(colIdx) == 0 {
+		return fmt.Errorf("SetFormat: no such columns")
+	}
+
+	for _, idx := range colIdx {
+		t.Formats[idx] = format
+	}
+
+	return nil
+}
+
+// SetColumnWidth overrides column width calculations with static values
+func (t *table) SetColumnWidth(width int, colnames ...string) error {
+	t.Lock()
+	defer t.Unlock()
+
 	return nil
 }
 
@@ -567,7 +591,10 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 			jcell.Lock()
 			if len(widths) < j+1 {
 				widths = append(widths, 0)
-				t.Formats = append(t.Formats, "%v")
+			}
+
+			if _, ok := t.Formats[j]; !ok {
+				t.Formats[j] = "%v"
 			}
 
 			format := t.Formats[j]

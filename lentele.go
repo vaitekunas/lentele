@@ -45,6 +45,9 @@ type Table interface {
 	// exists. If no format is specified, then "%v" is going to be used.
 	SetFormat(format string, colnames ...string) error
 
+	// SetColumnWidth overrides column width calculations with static values
+	SetColumnWidth(width int, colnames ...string) error
+
 	// GetRow returns the nth row from the table or error if no such row exists
 	GetRow(nth int) (Row, error)
 
