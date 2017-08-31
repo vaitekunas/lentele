@@ -8,8 +8,7 @@ See [the journal repo](https://github.com/vaitekunas/journal) for an implemented
 example.
 
 
-![2017-08-29-193241_1715x839_scrot](https://user-images.githubusercontent.com/3492398/29835261-b99440f0-8cf1-11e7-9756-fbdd2c9d6554.png)
-
+![vortex_table](https://user-images.githubusercontent.com/3492398/29930604-12d5bea4-8e6f-11e7-8dca-09be31c7a203.png)
 
 `lentele` is thread-safe, i.e. a table can be accessed by several goroutines
 simultaneously.
