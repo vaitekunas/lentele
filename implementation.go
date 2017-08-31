@@ -382,20 +382,8 @@ func (t *table) RemoveRows(rowIDs ...int) error {
 		selected = append(selected, nth)
 	}
 
-	// Sort entries
-	sort.Ints(selected)
-
-	// remove rows
-	for i := len(selected) - 1; i >= 0; i-- {
-		nth := selected[i]
-		if nth != len(t.Rows)-1 {
-			t.Rows = append(t.Rows[:nth], t.Rows[nth+1:]...)
-			t.RowNames = append(t.RowNames[:nth], t.RowNames[nth+1:]...)
-		} else {
-			t.Rows = t.Rows[:nth]
-			t.RowNames = t.RowNames[:nth]
-		}
-	}
+	// Remove rows
+	t.removeRows(false, selected)
 
 	return nil
 }
@@ -403,6 +391,30 @@ func (t *table) RemoveRows(rowIDs ...int) error {
 // RemoveRowsByName removes a set of named row from the table
 // NB: locks t
 func (t *table) RemoveRowsByName(names ...string) error {
+	t.Lock()
+	defer t.Unlock()
+
+	if len(names) == 0 {
+		return fmt.Errorf("RemoveRows: no row IDs provided")
+	}
+
+	// Header and footer
+	header := t.headAndFoot["header"]
+	footer := t.headAndFoot["footer"]
+
+	// Gather RowIds
+	selected := []int{}
+	for _, rmname := range names {
+		for i, name := range t.RowNames {
+			if strings.ToLower(rmname) == name && t.Rows[i] != header && t.Rows[i] != footer {
+				selected = append(selected, i)
+			}
+		}
+	}
+
+	// Remove rows
+	t.removeRows(false, selected)
+
 	return nil
 }
 
@@ -594,6 +606,30 @@ func (t *table) MarshalToRichJSON(dst io.Writer) (int, error) {
 // NB: locks t
 func (t *table) MarshalToVanillaJSON(dst io.Writer) (int, error) {
 	return 0, nil
+}
+
+// removeRows removes a set of rows from the trable
+func (t *table) removeRows(lock bool, selected []int) {
+	if lock {
+		t.Lock()
+		defer t.Unlock()
+	}
+
+	// Sort entries
+	sort.Ints(selected)
+
+	// remove rows
+	for i := len(selected) - 1; i >= 0; i-- {
+		nth := selected[i]
+		if nth != len(t.Rows)-1 {
+			t.Rows = append(t.Rows[:nth], t.Rows[nth+1:]...)
+			t.RowNames = append(t.RowNames[:nth], t.RowNames[nth+1:]...)
+		} else {
+			t.Rows = t.Rows[:nth]
+			t.RowNames = t.RowNames[:nth]
+		}
+	}
+
 }
 
 // tableFromRows builds a table from rows
