@@ -1,6 +1,12 @@
 # lentele
 
-`lentele` is a no-thrills ascii-table builder
+`lentele` is a mix between a very lite DataFrame interface and a
+no-thrills ascii-table builder. Its primary use is in cli-applications to display
+structured data (logs, cluster information and so on).
+
+See [the journal repo](https://github.com/vaitekunas/journal) for an implemented
+example.
+
 
 ![2017-08-29-193241_1715x839_scrot](https://user-images.githubusercontent.com/3492398/29835261-b99440f0-8cf1-11e7-9756-fbdd2c9d6554.png)
 
@@ -8,7 +14,7 @@
 `lentele` is thread-safe, i.e. a table can be accessed by several goroutines
 simultaneously.
 
-Documentation is available on [godoc](https://godoc.org/github.com/vaitekunas/lentele).
+`Go` documentation is available on [godoc](https://godoc.org/github.com/vaitekunas/lentele).
 
 # Usage
 

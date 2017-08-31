@@ -304,7 +304,13 @@ func (t *table) Transform(trans func(v interface{}) interface{}, colnames ...str
 
 // GetRow returns the nth row from the table or error if no such row exists
 func (t *table) GetRow(nth int) (Row, error) {
-	return nil, nil
+	t.Lock()
+	defer t.Unlock()
+
+	if nth >= 0 && nth < len(t.Rows) {
+		return t.Rows[nth], nil
+	}
+	return nil, fmt.Errorf("GetRow: no such row")
 }
 
 // Returns a row
