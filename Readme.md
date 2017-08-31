@@ -7,7 +7,6 @@ structured data (logs, cluster information and so on).
 See [the journal repo](https://github.com/vaitekunas/journal) for an implemented
 example.
 
-
 ![vortex_cluster](https://user-images.githubusercontent.com/3492398/29931653-1b68a308-8e72-11e7-9309-fbd092286945.png)
 
 `lentele` is thread-safe, i.e. a table can be accessed by several goroutines
