@@ -320,6 +320,7 @@ func (t *table) Filter(filter func(values ...interface{}) bool, inplace, keepFoo
 			Rows:        rows,
 			RowNames:    rowNames,
 			Formats:     t.Formats,
+			Titles:      t.Titles,
 			Footnotes:   t.Footnotes,
 			headAndFoot: headAndFoot,
 		}
