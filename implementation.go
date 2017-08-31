@@ -252,27 +252,25 @@ func (t *table) GetRowByName(name string) (Row, error) {
 // If inplace is set to true, then the filtered-out rows are permanently deleted
 // (references to the rows are removed).
 // Otherwise a new table, *referencing* the relevant rows, is created
-func (t *table) Filter(filter func(values ...interface{}) bool, inplace, keepFooter bool, columns ...string) Table {
+func (t *table) Filter(filter func(values ...interface{}) bool, inplace, keepFooter bool, columns ...string) (Table, error) {
+	t.Lock()
+	defer t.Unlock()
 
 	// Validate columns
 	if len(columns) == 0 {
-		return t
+		return nil, fmt.Errorf("Filter: at least one column must be provided")
 	}
 
 	colIdx := t.getColIdx(false, columns...)
 	if len(colIdx) == 0 {
-		return &table{}
+		return nil, fmt.Errorf("Filter: unknown columns")
 	}
-
-	t.Lock()
-	defer t.Unlock()
 
 	// Header and footer
 	header := t.headAndFoot["header"]
-	footer := t.headAndFoot["foooter"]
+	footer := t.headAndFoot["footer"]
 
 	// Fields for the new table
-	var fTable *table
 	headAndFoot := map[string]*row{}
 	rowNames := []string{}
 	rows := []*row{}
@@ -308,25 +306,9 @@ func (t *table) Filter(filter func(values ...interface{}) bool, inplace, keepFoo
 		}
 	}
 
-	// Create a new table or replace table rows
-	if inplace {
-		t.Rows = rows
-		t.RowNames = rowNames
-		t.headAndFoot = headAndFoot
-		fTable = t
-	} else {
-		fTable = &table{
-			Mutex:       &sync.Mutex{},
-			Rows:        rows,
-			RowNames:    rowNames,
-			Formats:     t.Formats,
-			Titles:      t.Titles,
-			Footnotes:   t.Footnotes,
-			headAndFoot: headAndFoot,
-		}
-	}
+	fTable := t.tableFromRows(false, inplace, rows, rowNames, headAndFoot)
 
-	return fTable
+	return fTable, nil
 
 }
 
@@ -334,9 +316,40 @@ func (t *table) Filter(filter func(values ...interface{}) bool, inplace, keepFoo
 // values.
 //
 // Rows without a unique name are treated as having a blank name, i.e. ""
-func (t *table) FilterByRowNames(filter func(rowname string) bool, inplace bool) Table {
+func (t *table) FilterByRowNames(filter func(rowname string) bool, inplace, keepFooter bool) Table {
+	t.Lock()
+	defer t.Unlock()
 
-	return nil
+	// Header and footer
+	header := t.headAndFoot["header"]
+	footer := t.headAndFoot["footer"]
+
+	// Fields for the new table
+	headAndFoot := map[string]*row{}
+	rowNames := []string{}
+	rows := []*row{}
+
+	// Find relevant rows
+	for i, row := range t.Rows {
+		if relevant := filter(t.RowNames[i]); relevant || row == header || (row == footer && keepFooter) {
+
+			if row == header {
+				headAndFoot["header"] = row
+			}
+
+			if row == footer {
+				headAndFoot["footer"] = row
+			}
+
+			rows = append(rows, row)
+			rowNames = append(rowNames, t.RowNames[i])
+		}
+
+	}
+
+	fTable := t.tableFromRows(false, inplace, rows, rowNames, headAndFoot)
+
+	return fTable
 }
 
 // Removes the nth row from the table
@@ -347,6 +360,37 @@ func (t *table) RemoveRow(nth int) error {
 // Removes the named row from the table
 func (t *table) RemoveRowByName(name string) error {
 	return nil
+}
+
+// tableFromRows builds a table from rows
+func (t *table) tableFromRows(lock, inplace bool, rows []*row, rowNames []string, hf map[string]*row) *table {
+
+	if lock {
+		t.Lock()
+		defer t.Unlock()
+	}
+
+	var fTable *table
+
+	// Create a new table or replace table rows
+	if inplace {
+		t.Rows = rows
+		t.RowNames = rowNames
+		t.headAndFoot = hf
+		fTable = t
+	} else {
+		fTable = &table{
+			Mutex:       &sync.Mutex{},
+			Rows:        rows,
+			RowNames:    rowNames,
+			Formats:     t.Formats,
+			Titles:      t.Titles,
+			Footnotes:   t.Footnotes,
+			headAndFoot: hf,
+		}
+	}
+
+	return fTable
 }
 
 // getColIdx returns indexes of selected columns

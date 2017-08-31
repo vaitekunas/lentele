@@ -58,13 +58,13 @@ type Table interface {
 	// If inplace is set to true, then the filtered-out rows are permanently deleted
 	// (references to the rows are removed).
 	// Otherwise a new table, *referencing* the relevant rows, is created
-	Filter(filter func(values ...interface{}) bool, inplace, keepFooter bool, columns ...string) Table
+	Filter(filter func(values ...interface{}) bool, inplace, keepFooter bool, columns ...string) (Table, error)
 
 	// FilterByRowNames is same as filter, only uses row names instead of column
 	// values.
 	//
 	// Rows without a unique name are treated as having a blank name, i.e. ""
-	FilterByRowNames(filter func(rowname string) bool, inplace bool) Table
+	FilterByRowNames(filter func(rowname string) bool, inplace, keepFooter bool) Table
 
 	// Removes the nth row from the table
 	RemoveRow(nth int) error
