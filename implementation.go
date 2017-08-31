@@ -1,6 +1,7 @@
 package lentele
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,16 +37,98 @@ func New(columns ...string) Table {
 // of objects, e.g.:
 //
 // bytes.NewBuffer([]byte(`[{col1: "val1", col2: "val2"},{col1: "val3", col2: "val4"}]`))
-func NewFromVanillaJSON(source io.Reader) (Table, error) {
+func NewFromVanillaJSON(source io.Reader, missingValue interface{}) (Table, error) {
 
-	return nil, nil
+	// Read marshaled input
+	jsoned, err := readMarshaled(source)
+	if err != nil {
+		return nil, fmt.Errorf("NewFromVanillaJSON: could not read from source: %s", err.Error())
+	}
+
+	// Unmarshal to a map
+	tableProtype := []map[string]interface{}{}
+	if err := json.Unmarshal(jsoned, &tableProtype); err != nil {
+		return nil, fmt.Errorf("NewFromVanillaJSON: could not unmarshal data: %s", err.Error())
+	}
+
+	// Parse table
+	newTable := New()
+	columns := []string{}
+	for i, line := range tableProtype {
+
+		// Gather columns and add a header
+		if i == 0 {
+			for colname := range line {
+				columns = append(columns, colname)
+			}
+			newTable.AddHeader(columns)
+		}
+
+		// Create rows
+		row := newTable.AddRow("")
+		for _, colname := range columns {
+			if value, ok := line[colname]; ok {
+				row.Insert(value)
+			} else {
+				row.Insert(missingValue)
+			}
+		}
+	}
+
+	return newTable, nil
 }
 
-// NewFromRichJSON creates a table with meta information (row names, modified
-// values, etc.)
+// NewFromRichJSON creates a table with some additional meta information
+// (row names, titles, footnotes)
 func NewFromRichJSON(source io.Reader) (Table, error) {
 
-	return nil, nil
+	// Read marshaled input
+	jsoned, err := readMarshaled(source)
+	if err != nil {
+		return nil, fmt.Errorf("NewFromVanillaJSON: could not read from source: %s", err.Error())
+	}
+
+	// Unmarshal to a map
+	tableProtype := &table{
+		Mutex:       &sync.Mutex{},
+		Rows:        []*row{},
+		RowNames:    []string{},
+		Formats:     []string{},
+		Footnotes:   []string{},
+		headAndFoot: map[string]*row{},
+	}
+	if err := json.Unmarshal(jsoned, tableProtype); err != nil {
+		return nil, fmt.Errorf("NewFromVanillaJSON: could not unmarshal data: %s", err.Error())
+	}
+
+	// Add mutexes
+	for i, row := range tableProtype.Rows {
+		// Add mutexes
+		row.Mutex = &sync.Mutex{}
+		for _, cell := range row.Cells {
+			cell.Mutex = &sync.Mutex{}
+		}
+
+		// Set header and footer
+		if tableProtype.RowNames[i] == "header" {
+			tableProtype.headAndFoot["header"] = row
+		}
+		if tableProtype.RowNames[i] == "footer" {
+			tableProtype.headAndFoot["footer"] = row
+		}
+	}
+
+	return tableProtype, nil
+}
+
+// read a json-marshaled table
+func readMarshaled(source io.Reader) ([]byte, error) {
+	jsoned := []byte{}
+	buf := bytes.NewBuffer(jsoned)
+	if _, err := io.Copy(buf, source); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // LoadTemplate returns the named template
@@ -82,9 +165,9 @@ type row struct {
 // value stores individual cell values
 type cell struct {
 	*sync.Mutex `json:",omit"`
-	Value       interface{}                     `json:"value"`
-	ModVal      interface{}                     `json:"modified"`
-	ModFunc     func(v interface{}) interface{} `json:",omit"`
+	Value       interface{} `json:"value"`
+	ModVal      interface{} `json:"modified"`
+	modFunc     func(v interface{}) interface{}
 }
 
 // AddTitle adds a title to the table
@@ -482,8 +565,8 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 			}
 
 			format := t.Formats[j]
-			if jcell.ModFunc == nil {
-				jcell.ModFunc = func(v interface{}) interface{} { return v }
+			if jcell.modFunc == nil {
+				jcell.modFunc = func(v interface{}) interface{} { return v }
 			}
 
 			// Prepare formated and modified values
@@ -498,7 +581,7 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 				value, _ := jcell.Value.(string)
 				for _, part := range strings.Split(value, "\n") {
 					valueNormSlice = append(valueNormSlice, fmt.Sprintf(format, part))
-					valueModSlice = append(valueModSlice, fmt.Sprintf(format, jcell.ModFunc(part)))
+					valueModSlice = append(valueModSlice, fmt.Sprintf(format, jcell.modFunc(part)))
 				}
 				valueNorm = strings.Join(valueNormSlice, "\n")
 				valueMod = strings.Join(valueModSlice, "\n")
@@ -509,14 +592,14 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 				valueModSlice := []string{}
 				for i := 0; i < slice.Len(); i++ {
 					valueNormSlice = append(valueNormSlice, fmt.Sprintf(format, slice.Index(i).Interface()))
-					valueModSlice = append(valueModSlice, fmt.Sprintf(format, jcell.ModFunc(slice.Index(i).Interface())))
+					valueModSlice = append(valueModSlice, fmt.Sprintf(format, jcell.modFunc(slice.Index(i).Interface())))
 				}
 				valueNorm = strings.Join(valueNormSlice, "\n")
 				valueMod = strings.Join(valueModSlice, "\n")
 
 			default:
 				valueNorm = fmt.Sprintf(format, jcell.Value)
-				valueMod = fmt.Sprintf(format, jcell.ModFunc(jcell.Value))
+				valueMod = fmt.Sprintf(format, jcell.modFunc(jcell.Value))
 			}
 
 			jcell.ModVal = valueMod
@@ -598,27 +681,15 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 // modified values, etc.)
 // NB: locks t
 func (t *table) MarshalToRichJSON(dst io.Writer) (int, error) {
+
+	// Render to create modvals
+	t.Render(bytes.NewBuffer([]byte{}), false, true, true, LoadTemplate("classic"))
+
 	t.Lock()
 	defer t.Unlock()
 
-	output := map[string]interface{}{}
-	rows := make([]interface{}, len(t.Rows), len(t.Rows))
-	output["titles"] = t.Titles
-	output["footnotes"] = t.Footnotes
-	output["rownames"] = t.RowNames
-	output["rows"] = rows
-
-	// Prepare rows
-	for i, row := range t.Rows {
-		values := make([]interface{}, len(row.Cells), len(row.Cells))
-		for j, cell := range row.Cells {
-			values[j] = cell.Value
-		}
-		rows[i] = values
-	}
-
 	// Marshal
-	jsoned, err := json.Marshal(output)
+	jsoned, err := json.Marshal(t)
 	if err != nil {
 		return 0, fmt.Errorf("MarshalToRichJSON: could not marshal to JSON: %s", err.Error())
 	}
@@ -851,7 +922,7 @@ func (r *row) Change(colname string, value interface{}) Row {
 	rcell := r.Cells[index]
 	rcell.Lock()
 	rcell.Value = value
-	rcell.ModFunc = func(v interface{}) interface{} { return v }
+	rcell.modFunc = func(v interface{}) interface{} { return v }
 	rcell.Unlock()
 
 	return r
@@ -890,7 +961,7 @@ func (r *row) Modify(modifier func(interface{}) interface{}, colnames ...string)
 
 		rcell := r.Cells[index]
 		rcell.Lock()
-		rcell.ModFunc = modifier
+		rcell.modFunc = modifier
 		rcell.Unlock()
 	}
 
