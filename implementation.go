@@ -1,6 +1,7 @@
 package lentele
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"reflect"
@@ -597,7 +598,33 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 // modified values, etc.)
 // NB: locks t
 func (t *table) MarshalToRichJSON(dst io.Writer) (int, error) {
-	return 0, nil
+	t.Lock()
+	defer t.Unlock()
+
+	output := map[string]interface{}{}
+	rows := make([]interface{}, len(t.Rows), len(t.Rows))
+	output["titles"] = t.Titles
+	output["footnotes"] = t.Footnotes
+	output["rownames"] = t.RowNames
+	output["rows"] = rows
+
+	// Prepare rows
+	for i, row := range t.Rows {
+		values := make([]interface{}, len(row.Cells), len(row.Cells))
+		for j, cell := range row.Cells {
+			values[j] = cell.Value
+		}
+		rows[i] = values
+	}
+
+	// Marshal
+	jsoned, err := json.Marshal(output)
+	if err != nil {
+		return 0, fmt.Errorf("MarshalToRichJSON: could not marshal to JSON: %s", err.Error())
+	}
+
+	// Write to destination
+	return dst.Write(jsoned)
 }
 
 // MarshalToVanillaJSON marshals the table as a simple list of objects,
@@ -605,7 +632,61 @@ func (t *table) MarshalToRichJSON(dst io.Writer) (int, error) {
 // It does not preserve modifiers, row names and so on.
 // NB: locks t
 func (t *table) MarshalToVanillaJSON(dst io.Writer) (int, error) {
-	return 0, nil
+	t.Lock()
+	defer t.Unlock()
+
+	// Header and footer
+	header := t.headAndFoot["header"]
+	footer := t.headAndFoot["footer"]
+	ignore := []int{-1, -1}
+
+	rows := make([]map[string]interface{}, len(t.Rows), len(t.Rows))
+
+	// Prepare rows
+	for i, row := range t.Rows {
+
+		if row == header {
+			ignore[0] = i
+			continue
+		}
+
+		if row == footer {
+			ignore[1] = i
+			continue
+		}
+
+		rows[i] = map[string]interface{}{}
+		for j, cell := range row.Cells {
+			colname := fmt.Sprintf("COL_%d", j)
+			if header != nil && len(header.Cells)-1 >= j {
+				colname = fmt.Sprintf("%v", header.Cells[j].Value)
+			}
+			rows[i][colname] = cell.Value
+		}
+	}
+
+	// Remove header/footer nil rows
+	sort.Ints(ignore)
+	for i := 1; i >= 0; i-- {
+		if ignore[i] == -1 {
+			continue
+		}
+		if ignore[i] != len(rows)-1 {
+			rows = append(rows[:ignore[i]], rows[ignore[i]+1:]...)
+		} else {
+			rows = rows[:ignore[i]]
+		}
+	}
+
+	// Marshal
+	jsoned, err := json.Marshal(rows)
+	if err != nil {
+		return 0, fmt.Errorf("MarshalToVanillaJSON: could not marshal to JSON: %s", err.Error())
+	}
+
+	// Write to destination
+	return dst.Write(jsoned)
+
 }
 
 // removeRows removes a set of rows from the trable
