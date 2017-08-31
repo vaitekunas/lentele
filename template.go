@@ -245,9 +245,10 @@ func renderL1L2L3(T1 [4]string, T2 [3]string, T3 [4]string, widths []int, mcells
 
 	if center {
 		L1 = centerStr(L1)
-		L2 = strings.Join(L2Slice,"\n")
 		L3 = centerStr(L3)
 	}
+	
+	L2 = strings.Join(L2Slice,"\n")
 
 	return L1, L2, L3, isEmpty
 
