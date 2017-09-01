@@ -175,28 +175,32 @@ type cell struct {
 
 // AddTitle adds a title to the table
 // NB: locks t
-func (t *table) AddTitle(title string) {
+func (t *table) AddTitle(title string) error {
 	t.Lock()
 	defer t.Unlock()
 
 	if len(title) == 0 {
-		return
+		return fmt.Errorf("AddTitle: cannot add empty titles")
 	}
 
 	t.Titles = append(t.Titles, title)
+
+	return nil
 }
 
 // AddFootnote adds a footnoite to the table
 // NB: locks t
-func (t *table) AddFootnote(footnote string) {
+func (t *table) AddFootnote(footnote string) error {
 	t.Lock()
 	defer t.Unlock()
 
 	if len(footnote) == 0 {
-		return
+		return fmt.Errorf("AddTitle: cannot add empty footnotes")
 	}
 
 	t.Footnotes = append(t.Footnotes, footnote)
+
+	return nil
 }
 
 // AddHeader adds a header to the table
@@ -263,7 +267,7 @@ func (t *table) SetFormat(format string, colnames ...string) error {
 		return fmt.Errorf("SetFormat: provide at least one column name")
 	}
 
-	colIdx := t.getColIdx(false, colnames...)
+	colIdx := t.getColIdx(colnames...)
 	if len(colIdx) == 0 {
 		return fmt.Errorf("SetFormat: no such columns")
 	}
@@ -284,7 +288,7 @@ func (t *table) SetColumnWidth(width int, colnames ...string) error {
 		return fmt.Errorf("SetColumnWidth: provide at least one column name")
 	}
 
-	colIdx := t.getColIdx(false, colnames...)
+	colIdx := t.getColIdx(colnames...)
 	if len(colIdx) == 0 {
 		return fmt.Errorf("SetColumnWidth: no such columns")
 	}
@@ -298,16 +302,19 @@ func (t *table) SetColumnWidth(width int, colnames ...string) error {
 
 // Transform transforms the values of colnames using function 'trans'
 // NB: locks t
-func (t *table) Transform(trans func(v interface{}) interface{}, colnames ...string) {
+func (t *table) Transform(trans func(v interface{}) interface{}, colnames ...string) error {
 	t.Lock()
 	defer t.Unlock()
 
 	if len(colnames) == 0 {
-		return
+		return fmt.Errorf("Transform: provide at least one column name")
 	}
 
 	// Get indexes
-	colIdx := t.getColIdx(false, colnames...)
+	colIdx := t.getColIdx(colnames...)
+	if len(colIdx) == 0 {
+		return fmt.Errorf("Transform: no such columns")
+	}
 
 	// Get header and footer
 	header := t.headAndFoot["header"]
@@ -339,7 +346,7 @@ func (t *table) Transform(trans func(v interface{}) interface{}, colnames ...str
 			}
 		}
 	}
-
+	return nil
 }
 
 // GetRow returns the nth row from the table or error if no such row exists
@@ -379,6 +386,27 @@ func (t *table) GetRowByName(name string) (Row, error) {
 
 }
 
+// Returns the count of rows in a table
+// NB: locks t
+func (t *table) GetRowCount() int {
+	t.Lock()
+	defer t.Unlock()
+
+	return len(t.Rows)
+}
+
+// Returns the rownames
+// NB: locks t
+func (t *table) GetRowNames() []string {
+	t.Lock()
+	defer t.Unlock()
+
+	cpnames := make([]string, len(t.RowNames), len(t.RowNames))
+	copy(cpnames, t.RowNames)
+
+	return cpnames
+}
+
 // Filter applies a filter to each row and returns a filtered table.
 // If inplace is set to true, then the filtered-out rows are permanently deleted
 // (references to the rows are removed).
@@ -392,7 +420,7 @@ func (t *table) Filter(filter func(values ...interface{}) bool, inplace, keepFoo
 		return nil, fmt.Errorf("Filter: at least one column must be provided")
 	}
 
-	colIdx := t.getColIdx(false, columns...)
+	colIdx := t.getColIdx(columns...)
 	if len(colIdx) == 0 {
 		return nil, fmt.Errorf("Filter: unknown columns")
 	}
@@ -497,23 +525,30 @@ func (t *table) RemoveRows(rowIDs ...int) error {
 	header := t.headAndFoot["header"]
 	footer := t.headAndFoot["footer"]
 
-	selected := []int{}
-
 	// Validate rowIDs
+	seen := make(map[int]bool, len(t.Rows))
+	selected := make([]int, len(t.Rows))
+	j := 0
 	for _, nth := range rowIDs {
 		if nth < 0 || nth > len(t.Rows) {
 			return fmt.Errorf("RemoveRow: no such row")
+		}
+		if _, ok := seen[nth]; ok {
+			continue
 		}
 
 		srow := t.Rows[nth]
 		if srow == header || srow == footer {
 			return fmt.Errorf("RemoveRow: cannot remove header/footer")
 		}
-		selected = append(selected, nth)
+		selected[j] = nth
+
+		seen[nth] = true
+		j++
 	}
 
 	// Remove rows
-	t.removeRows(false, selected)
+	t.removeRows(selected[:j])
 
 	return nil
 }
@@ -533,17 +568,27 @@ func (t *table) RemoveRowsByName(names ...string) error {
 	footer := t.headAndFoot["footer"]
 
 	// Gather RowIds
-	selected := []int{}
+	seen := make(map[int]bool, len(t.Rows))
+	selected := make([]int, len(t.Rows))
+	j := 0
 	for _, rmname := range names {
 		for i, name := range t.RowNames {
-			if strings.ToLower(rmname) == name && t.Rows[i] != header && t.Rows[i] != footer {
-				selected = append(selected, i)
+			if strings.ToLower(rmname) == name {
+				if t.Rows[i] == header || t.Rows[i] == footer {
+					return fmt.Errorf("RemoveRowsByName: cannot remove header or footer")
+				}
+				if _, ok := seen[i]; ok {
+					continue
+				}
+				selected[j] = i
+				seen[i] = true
+				j++
 			}
 		}
 	}
 
 	// Remove rows
-	t.removeRows(false, selected)
+	t.removeRows(selected[:j])
 
 	return nil
 }
@@ -560,7 +605,7 @@ func (t *table) Render(dst io.Writer, measureModified, modified, centered bool, 
 	footer, _ := t.headAndFoot["footer"]
 
 	// Get relevant columns
-	colIdx := t.getColIdx(false, columns...)
+	colIdx := t.getColIdx(columns...)
 
 	// Final rows
 	measureRows := [][]string{}
@@ -814,11 +859,7 @@ func (t *table) MarshalToVanillaJSON(dst io.Writer) (int, error) {
 }
 
 // removeRows removes a set of rows from the trable
-func (t *table) removeRows(lock bool, selected []int) {
-	if lock {
-		t.Lock()
-		defer t.Unlock()
-	}
+func (t *table) removeRows(selected []int) {
 
 	// Sort entries
 	sort.Ints(selected)
@@ -869,11 +910,7 @@ func (t *table) tableFromRows(lock, inplace bool, rows []*row, rowNames []string
 }
 
 // getColIdx returns indexes of selected columns
-func (t *table) getColIdx(lock bool, columns ...string) []int {
-	if lock {
-		t.Lock()
-		defer t.Unlock()
-	}
+func (t *table) getColIdx(columns ...string) []int {
 
 	colIdx := []int{}
 	for _, col := range columns {

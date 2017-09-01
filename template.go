@@ -77,7 +77,7 @@ func (t *template) RenderHeader(mcells, pcells []string) []string {
 	defer t.Unlock()
 
 	// Render lines
-	L1, L2, L3, _ := renderL1L2L3(t.H1, t.H2, t.H3, t.ColWidths, t.ColWidthOverride, mcells, pcells, t.Center)
+	L1, L2, L3, _ := renderL1L2L3(t.H1, t.H2, t.H3, t.ColWidths, map[int]int{}, mcells, pcells, t.Center)
 
 	// Append or skip
 	lines := []string{}
@@ -122,7 +122,7 @@ func (t *template) RenderFooter(mcells, pcells []string) []string {
 	defer t.Unlock()
 
 	// Render lines
-	L1, L2, L3, isEmpty := renderL1L2L3(t.F1, t.F2, t.F3, t.ColWidths, t.ColWidthOverride, mcells, pcells, t.Center)
+	L1, L2, L3, isEmpty := renderL1L2L3(t.F1, t.F2, t.F3, t.ColWidths, map[int]int{}, mcells, pcells, t.Center)
 
 	lines := []string{}
 	if !t.SkipF1 {

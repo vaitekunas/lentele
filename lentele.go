@@ -10,10 +10,10 @@ import (
 type Table interface {
 
 	// AddTitle adds an optional title to the table
-	AddTitle(title string)
+	AddTitle(title string) error
 
 	// AddFootnote adds a footnote to the table
-	AddFootnote(footnote string)
+	AddFootnote(footnote string) error
 
 	// AddHeader adds a header row (optional, but recommended).
 	//
@@ -55,7 +55,7 @@ type Table interface {
 	GetRowByName(name string) (Row, error)
 
 	// Transform a function to all the values in colnames
-	Transform(trans func(v interface{}) interface{}, colnames ...string)
+	Transform(trans func(v interface{}) interface{}, colnames ...string) error
 
 	// Filter applies a filter to each row and returns a filtered table.
 	// If inplace is set to true, then the filtered-out rows are permanently deleted
@@ -68,6 +68,12 @@ type Table interface {
 	//
 	// Rows without a unique name are treated as having a blank name, i.e. ""
 	FilterByRowNames(filter func(rowname string) bool, inplace, keepFooter bool) Table
+
+	// GetRowCount returns a number of rows
+	GetRowCount() int
+
+	// GetRowNames returns all the names of rows
+	GetRowNames() []string
 
 	// RemoveRows removes a set of rows from the table
 	RemoveRows(rowIds ...int) error
