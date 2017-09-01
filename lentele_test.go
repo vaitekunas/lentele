@@ -516,7 +516,7 @@ func TestGoroutines(t *testing.T) {
 		}
 	}()
 
-	routines := 1000
+	routines := 100
 	rowsPerRoutine := 10000
 
 	addSomeRows := func(table Table, ready chan<- bool) {
