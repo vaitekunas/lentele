@@ -1,5 +1,7 @@
 # lentele
 
+[![Build Status](https://travis-ci.org/vaitekunas/lentele.svg?branch=master)](https://travis-ci.org/vaitekunas/lentele)
+
 `lentele` is a mix between a very lite DataFrame interface and a
 no-thrills ascii-table builder. Its primary use is in cli-applications to display
 structured data (logs, cluster information and so on).
