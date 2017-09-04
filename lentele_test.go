@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"io"
-	"os"
 	"testing"
 )
 
