@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"io"
+	"os"
 	"testing"
 )
 
@@ -452,6 +453,9 @@ func TestMisc(t *testing.T) {
 	if len(rownames) != rowcount || lastRownames[0] != "typo" || lastRownames[1] != "header" || lastRownames[2] != "footer" {
 		t.Errorf("TestMisc: incorrect column names")
 	}
+
+	tmpl := LoadTemplate("classic")
+	tmpl.PrintExample(bytes.NewBuffer([]byte{}))
 }
 
 func TestMarshalToRichJSON(t *testing.T) {
@@ -542,4 +546,11 @@ func TestGoroutines(t *testing.T) {
 		t.Errorf("TestGoroutines: failed adding some rows: expected %d, got %d:", expected, rcount)
 	}
 
+}
+
+func ExampleTemplate(t *testing.T) {
+	for _, tmpl := range []func() *template{tmplClassic, tmplSmooth, tmplModern} {
+		template := tmpl()
+		template.PrintExample(os.Stdout)
+	}
 }

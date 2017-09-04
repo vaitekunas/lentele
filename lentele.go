@@ -148,4 +148,7 @@ type Template interface {
 
 	// RenderFootnotes renders table's footnotes
 	RenderFootnotes(footnotes []string) []string
+
+	// PrintExample prints a small example table
+	PrintExample(dst io.Writer)
 }

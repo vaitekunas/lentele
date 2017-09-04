@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"golang.org/x/crypto/ssh/terminal"
 	"os"
+	"io"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -177,6 +178,24 @@ func (t *template) RenderTitles(titles []string) []string {
 	lines = append(lines, "")
 
 	return lines
+}
+
+// PrintExample Prints an example
+func (t *template) PrintExample(dst io.Writer) {
+
+	table := New("ID", "Client", "Amount")
+	table.AddRow("").Insert(1, "Dunder Mifflin", "172,341")
+	table.AddRow("").Insert(2, "Acme Corporation", "43,223")
+	table.AddRow("").Insert(3, "Monsters, Inc", "666,666")
+	table.AddRow("").Insert(4, "Advanced Idea Mechanics", "469,218")
+	table.AddRow("").Insert(5, "Michael Scott Paper Company", "9,288")
+	table.AddRow("").Insert(6, "Weyland-Yutani Corporation", "982,283,767")
+	table.AddFooter().Insert("","Total:","983,644,505 (983.6m)")
+
+	table.SetFormat("%-27s", "Client")
+	table.SetFormat("%20s","Amount")
+
+	table.Render(dst, false, true, true, t)
 }
 
 // renderL1L2L3 renders a template line
@@ -366,7 +385,7 @@ func tmplSmooth() *template {
 		ColWidthOverride: map[int]int{},
 		SkipC1:     true,
 		SkipLastC3: true,
-		H1:         [4]string{"┌", "─", "┬", "┐"},
+		H1:         [4]string{"╭", "─", "┬", "╮"},
 		H2:         [3]string{"│", "│", "│"},
 		H3:         [4]string{"├", "─", "┼", "┤"},
 		C1:         [4]string{"├", "─", "┼", "┤"},
@@ -374,7 +393,7 @@ func tmplSmooth() *template {
 		C3:         [4]string{"├", "─", "┼", "┤"},
 		F1:         [4]string{"├", "─", "┴", "┤"},
 		F2:         [3]string{"│", " ", "│"},
-		F3:         [4]string{"└", "─", "─", "┘"},
+		F3:         [4]string{"╰", "─", "─", "╯"},
 		HR:         "─",
 	}
 }
