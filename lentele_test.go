@@ -547,10 +547,3 @@ func TestGoroutines(t *testing.T) {
 	}
 
 }
-
-func ExampleTemplate(t *testing.T) {
-	for _, tmpl := range []func() *template{tmplClassic, tmplSmooth, tmplModern} {
-		template := tmpl()
-		template.PrintExample(os.Stdout)
-	}
-}

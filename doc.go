@@ -1,4 +1,6 @@
-// This package can be used to display tabular data in a prettier way.
+// Package lentele can be used to display structured data (log entries, cluster
+// information, etc.) as a table. It also permits light data manipulations (filtering
+// transforming, etc.)
 //
 // Lazy evaluation
 //
@@ -29,71 +31,25 @@
 // If ansi escape sequences are used to modify cell values, then calculation
 // of cell widths will lead to peculiar results when printing to os.Stdout,
 // since the escape sequences are not visible in the console (get converted
-// to color), but increase the size of the string.
+// to color), but increase the size of the string. Use "measureModified=false"
+// when rendering tables that include ansi colors.
 //
 // Mixing ansi and non-ansi modifiers
 //
 // Mixing regular modifiers (e.g. insertion of thousands-separators)
 // together with ansi-coloring will, generally, have a negative effect, since
 // the modifications will not be separable at render time. It is, thus, a better
-// idea to insert already (regularly) modified values and then add ansi colors, e.g.::
+// idea to insert already (regularly) modified values and then add ansi colors, e.g.:
 //  table.AddRow().Insert("ClientX",regMod(8829156.21)).Modify(ansiHigh, "Amount")
 //
-// String trimmers
+// Transformations
 //
-// lentele.Table does not include any explicit trimming functions to reduce the
-// length of very long strings so that cells don't get too wide. Use inline
-// modifiers for that, i.e.
+// Sometimes it makes sense to transform a whole column (e.g. trim strings and add
+// ellipsis) instead of modifying individual cells. Columns can be transformed by
+//  Table.Transform()
 //
-//  func trim(s string) string {
-//  	if utf8.RuneCountInString(s) > 7 {
-//  		return fmt.Sprintf("%s...", s[:7])
-//  	}
-//  	return s
-//  }
+// Chaining
 //
-//  table.AddRow().Insert(trim("Iceland"), trim("Eyjafjallajökull"))
-//
-//  // alternatively:
-//  table.AddRow().Insert("Iceland", "Eyjafjallajökull").Modify("Volcano", trim)
-//
-// Modifier factories
-//
-// In most cases it makes sense to create a modifier factory in order to make
-// the creation of modifiers much easier:
-//  import "github.com/fatih/color"
-//
-//  modFactory := func(c color.Color) func(interface{}) interface{} {
-//    return func(v interface{}) interface{}{
-//      return c.Sprintf("%v",v)
-//    }
-//  }
-//
-//  high := modFactory(color.New(color.FgGreen))
-//  low := modFactory(color.New(color.FgRed))
-//
-// Instead of having several modification functions, one can put the whole
-// business logic into the modifier itself and use it for all values:
-//
-//  revenue := func(v interface{}) interface{}{
-//    vf, ok := v.(float)
-//    if !ok {
-//      return v
-//    }
-//
-//    var c colors.Color
-//
-//    switch vf {
-//      case < 1000:
-//        c = color.New(color.FgRed)
-//      case < 10000:
-//        c = color.New(color.FgYellow)
-//      default:
-//        c = color.New(color.FgGreen)
-//    }
-//
-//    return c.Sprintf("%6.2f",vf):
-//  }
-//
-//  table.AddRow().Insert("Client Y",2883.12).Modify(revenue, "Amount")
+// All the row operations can be chained, e.g.:
+//  table.AddRow("").Insert(1).Insert("E corp").Insert(425567.32).Modify(evil, "Client").Modify(mm, "Amount").Change("ID", 0)
 package lentele
