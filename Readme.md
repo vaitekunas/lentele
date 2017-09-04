@@ -1,4 +1,4 @@
-# lentele ![godoc](https://img.shields.io/badge/go-documentation-blue.svg) [![Build Status](https://travis-ci.org/vaitekunas/lentele.svg?branch=master)](https://travis-ci.org/vaitekunas/lentele) [![Coverage Status](https://coveralls.io/repos/github/vaitekunas/lentele/badge.svg?branch=master)](https://coveralls.io/github/vaitekunas/lentele?branch=master)
+# lentele [![godoc](https://img.shields.io/badge/go-documentation-blue.svg)](https://godoc.org/github.com/vaitekunas/lentele) [![Build Status](https://travis-ci.org/vaitekunas/lentele.svg?branch=master)](https://travis-ci.org/vaitekunas/lentele) [![Coverage Status](https://coveralls.io/repos/github/vaitekunas/lentele/badge.svg?branch=master)](https://coveralls.io/github/vaitekunas/lentele?branch=master)
 
 `lentele` is a mix between a very lite DataFrame interface and a no-thrills
 ascii-table builder. Its primary use is to display structured data (logs,
