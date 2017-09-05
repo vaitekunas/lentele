@@ -331,7 +331,7 @@ table.Render(os.Stdout, false, true, true, lentele.LoadTemplate("classic"))
 `lentele.Table` can be marshaled into rich (containing modified values, titles, etc)
 or vanilla (just non-modified values and table header) JSON:
 
-```
+```Go
 buf := bytes.NewBuffer([]byte{})
 
 // Marshal to rich JSON
@@ -356,7 +356,7 @@ fmt.Println(buf.String())
 ```
 
 A JSON object can be unmarshaled into a table by using either the `NewFromRichJSON(src io.Reader)`
-or the `NewFromVanillaJSON(src io.Reader)` methods. The later method can also me
+or the `NewFromVanillaJSON(src io.Reader)` methods. The later method can also be
 used to create tables from unrelated JSON objects (e.g. a marshalled slice of maps or structs)
 
 ```Go
